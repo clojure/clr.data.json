@@ -40,8 +40,8 @@
   (:use [clojure.pprint :only (write formatter-out)])
   ;DM: (:import (java.io PrintWriter PushbackReader StringWriter
   ;DM:                   StringReader Reader EOFException)))
-  (:import (System.IO EndOfStreamException Stream StreamWriter               ;DM: Added
-                      StringReader StringWriter TextWriter)                  ;DM: Added
+  (:import (System.IO EndOfStreamException StreamWriter StringReader         ;DM: Added
+                      StringWriter TextReader TextWriter)                    ;DM: Added
            (clojure.lang PushbackTextReader)                                 ;DM: Added
 		   (System.Globalization NumberStyles StringInfo)                    ;DM: Added
 		   ))                                                                ;DM: Added
@@ -201,7 +201,7 @@
  (read-json-from [input keywordize? eof-error? eof-value]
                  (read-json-reader input
                                    keywordize? eof-error? eof-value))
- Stream                                                                                ;DM: Reader
+ TextReader                                                                            ;DM: Reader
  (read-json-from [input keywordize? eof-error? eof-value]
                  (read-json-reader (PushbackTextReader. input)                         ;DM: PushbackReader.
                                    keywordize? eof-error? eof-value)))
@@ -306,6 +306,11 @@
 (defn- write-json-ratio [x out escape-unicode?]
   (write-json (double x) out escape-unicode?))
 
+;;DM: Added write-json-float
+(defn- write-json-float [x ^TextWriter out escape-unicode?] 
+  (.Write out (fp-str x)))                                  
+
+  
 ;;DM: (extend nil Write-JSON
 ;;DM:         {:write-json write-json-null})
 ;;DM: (extend clojure.lang.Named Write-JSON
@@ -348,8 +353,8 @@
 (extend System.UInt16 Write-JSON {:write-json write-json-plain})
 (extend System.UInt32 Write-JSON {:write-json write-json-plain})
 (extend System.UInt64 Write-JSON {:write-json write-json-plain})
-(extend System.Double Write-JSON {:write-json write-json-plain})
-(extend System.Single Write-JSON {:write-json write-json-plain})
+(extend System.Double Write-JSON {:write-json write-json-float})
+(extend System.Single Write-JSON {:write-json write-json-float})
 (extend System.Decimal Write-JSON {:write-json write-json-plain})
 (extend clojure.lang.BigInt Write-JSON
         {:write-json write-json-bignum})
@@ -395,7 +400,7 @@
         to turn off \\uXXXX escapes of Unicode characters."
   [x & options]
   (let [{:keys [escape-unicode] :or {escape-unicode true}} options]
-    (write-json x (StreamWriter. ^Stream *out*) escape-unicode)))                     ;DM: PrintWriter.  & Added ^Stream hint
+    (write-json x (StreamWriter. *out*) escape-unicode)))                     ;DM: PrintWriter.  
 
 
 ;;; JSON PRETTY-PRINTER
