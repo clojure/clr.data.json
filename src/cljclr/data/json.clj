@@ -34,7 +34,7 @@
 (ns ^{:author "Stuart Sierra, modifed for ClojureCLR by David Miller"
        :doc "JavaScript Object Notation (JSON) parser/writer.
   See http://www.json.org/
-  To write JSON, use json-str, write-json, or write-json.
+  To write JSON, use json-str, write-json, or print-json.
   To read JSON, use read-json."}
   cljclr.data.json                                                           ;DM: clojure.data.json
   (:use [clojure.pprint :only (write formatter-out)])
