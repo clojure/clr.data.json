@@ -29,7 +29,7 @@
       :doc "JavaScript Object Notation (JSON) parser/generator.
   See http://www.json.org/"}
   clojure.data.json
-  (:refer-clojure :exclude (read str))
+  (:refer-clojure :exclude (read))
   (:require [clojure.pprint :as pprint])
   ;DM: (:import (java.io PrintWriter PushbackReader StringWriter
   ;DM:                   StringReader Reader EOFException)))
@@ -53,7 +53,7 @@
         (name x)
         (nil? x)
         (throw (Exception. "JSON object properties may not be nil"))
-        :else (clojure.core/str x)))
+        :else (str x)))
 
 (defn- default-value-fn [k v] v)
 
@@ -136,7 +136,7 @@
     (when (or (neg? a) (neg? b) (neg? c) (neg? d))
       (throw (EndOfStreamException.                                                  ;DM: EOFException.
 	          "JSON error (end-of-file inside Unicode character escape)")))
-    (let [s (clojure.core/str (char a) (char b) (char c) (char d))]
+    (let [s (str (char a) (char b) (char c) (char d))]
       (char (Int32/Parse s NumberStyles/HexNumber)))))                               ;DM: (Integer/parseInt s 16)
 
 (defn- read-escaped-char [^PushbackTextReader stream]                               ;DM: ^PushbackReader
@@ -161,7 +161,7 @@
         (when (neg? c)
           (throw (EndOfStreamException. "JSON error (end-of-file inside array)")))  ;DM: EOFException.
         (codepoint-case c  
-          \" (clojure.core/str buffer)
+          \" (str buffer)
           \\ (do (.Append buffer (read-escaped-char stream))                        ;DM: .append
                  (recur))
           (do (.Append buffer (char c))                                             ;DM: .append
@@ -193,8 +193,8 @@
                        (do (.Unread stream c)                            ;DM: .unread
                            decimal?))))]
     (if decimal?
-      (read-decimal (clojure.core/str buffer))
-      (read-integer (clojure.core/str buffer)))))  
+      (read-decimal (str buffer))
+      (read-integer (str buffer)))))  
 
 (defn- -read
   [^PushbackTextReader stream eof-error? eof-value]                            ;DM: ^PushbackReader
@@ -245,7 +245,7 @@
           \[ (read-array stream)
 
           (throw (Exception. 
-		          (clojure.core/str "JSON error (unexpected character): " (char c)))))))))
+		          (str "JSON error (unexpected character): " (char c)))))))))
 
 (defn read
   "Reads a single item of JSON data from a java.io.Reader. Options are
@@ -330,7 +330,7 @@
             (.Append sb (format "\\u%04x" cp)) ; Hexadecimal-escaped                   ;DM: .append
             (.Append sb (.get_Chars s i))))))                                          ;DM: (.appendCodePoint sb cp)
     (.Append sb \")                                                                    ;DM: .append
-    (.Write out (clojure.core/str sb))))                                               ;DM: .print
+    (.Write out (str sb))))                                               ;DM: .print
 
 (defn- write-object [m ^TextWriter out]                                 ;DM: ^PrintWriter
   (.Write out \{)                                                       ;DM: .print
@@ -364,7 +364,7 @@
   (.Write out \]))                                                                    ;DM: .print
 
 (defn- write-bignum [x ^TextWriter out]                                               ;DM: ^PrintWriter
-  (.Write out (clojure.core/str x)))                                                  ;DM: .print
+  (.Write out (str x)))                                                  ;DM: .print
 
 (defn- write-plain [x ^TextWriter out]                                                ;DM: ^PrintWriter
   (.Write out x))                                                                     ;DM: .print
@@ -378,7 +378,7 @@
 (defn- write-generic [x out]
   (if (.IsArray (class x))                                                            ;DM: isArray
     (-write (seq x) out)
-    (throw (Exception. (clojure.core/str "Don't know how to write JSON of " (class x))))))
+    (throw (Exception. (str "Don't know how to write JSON of " (class x))))))
 
 (defn- write-ratio [x out]
   (-write (double x) out))
@@ -492,7 +492,7 @@
               *value-fn* value-fn]
      (-write x (if (instance? TextWriter writer) writer (StreamWriter. writer))))))    ;DM: (-write x(PrintWriter. writer))
 	
-(defn str
+(defn write-str
   "Converts x to a JSON-formatted string. Options are the same as
   write."
   [x & options]
