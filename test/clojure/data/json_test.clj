@@ -28,19 +28,22 @@
 (ns clojure.data.json-test
   (:use clojure.test clojure.data.json))
 
-#_(deftest can-read-from-pushback-reader
+(deftest can-read-from-pushback-reader
   (let [s (clojure.lang.PushbackTextReader. (System.IO.StringReader. "42"))]    ;DM: java.io.PushbackReader. java.io.StringReader.
-    (is (= 42 (read-json s)))))
+    (is (= 42 (parse s)))))
 
-#_(deftest can-read-from-reader
+(deftest can-read-from-reader
   (let [s (System.IO.StringReader. "42")]                                       ;DM: java.io.StringReader.
-    (is (= 42 (read-json s)))))
+    (is (= 42 (parse s)))))
 
 (deftest can-read-numbers
   (is (= 42 (parse-str "42")))
   (is (= -3 (parse-str "-3")))
   (is (= 3.14159 (parse-str "3.14159")))
   (is (= 6.022e23 (parse-str "6.022e23"))))
+
+(deftest can-read-bigdec
+  (is (= 3.14159M (parse-str "3.14159" :bigdec true))))
 
 (deftest can-read-null
   (is (= nil (parse-str "null"))))
@@ -101,6 +104,30 @@
   (is (= {"a" [1 2 {"b" [3 "four"]} 5.5]}
          (parse-str "{\"a\":[1,2,{\"b\":[3,\"four\"]},5.5]}"))))
 
+(deftest can-keywordize-keys
+  (is (= {:a [1 2 {:b [3 "four"]} 5.5]}
+         (parse-str "{\"a\":[1,2,{\"b\":[3,\"four\"]},5.5]}"
+                    :key-fn keyword))))
+
+(deftest can-convert-values
+  (is (= {:number 42 :date (System.DateTime. 1955 6 12)}                                  ;DM: (java.sql.Date. 55 6 12)
+         (parse-str "{\"number\": 42, \"date\": \"1955-06-12\"}"
+                    :key-fn keyword
+                    :value-fn (fn [k v]
+                                (if (= :date k)
+                                  (System.DateTime/Parse v)                               ;DM: (java.sql.Date/valueOf v)
+                                  v))))))
+
+(deftest can-omit-values
+  (is (= {:number 42}
+         (parse-str "{\"number\": 42, \"date\": \"1955-07-12\"}"
+                    :key-fn keyword
+                    :value-fn (fn thisfn [k v]
+                                (if (= :date k)
+                                  thisfn
+                                  v))))))
+
+		 
 (declare pass1-string)
 
 (deftest pass1-test
