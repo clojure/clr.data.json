@@ -226,11 +226,10 @@
               "Print object to PrintWriter out as JSON"))
 
 (defn- write-json-string [^String s ^TextWriter out escape-unicode?]                   ;DM: ^CharSequence  ^PrintWriter
-  (let [sb (StringBuilder. ^Int32 (count s))                                           ;DM: ^Integer   ]
-        chars32 (StringInfo/ParseCombiningCharacters s)]                               ;DM: Added
+  (let [sb (StringBuilder. ^Int32 (count s))]                                          ;DM: ^Integer
     (.Append sb \")                                                                    ;DM: .append
-    (dotimes [i (count chars32)]                                                       ;DM:(count s)
-      (let [cp (Char/ConvertToUtf32 s (aget chars32 i))]                               ;DM: (Character/codePointAt s i)
+    (dotimes [i (count s)]
+      (let [cp (int (.get_Chars s i))]                                                 ;DM: (Character/codePointAt s i)
         (cond
          ;; Handle printable JSON escapes before ASCII
          (= cp 34) (.Append sb "\\\"")                                                 ;DM: .append
@@ -248,7 +247,7 @@
          :else (if escape-unicode?
 		 ;; Hexadecimal-escaped
 		 (.Append sb (format "\\u%04x" cp))                                            ;DM: .append
-		 (.Append sb  (Char/ConvertFromUtf32 cp))))))                                  ;DM: (.appendCodePoint sb cp)
+		 (.Append sb (.get_Chars s i))))))                                             ;DM: (.appendCodePoint sb cp)
     (.Append sb \")                                                                    ;DM: .append
     (.Write out (str sb))))                                                            ;DM: .print
 
