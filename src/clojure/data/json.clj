@@ -34,7 +34,7 @@
   ;DM: (:import (java.io PrintWriter PushbackReader StringWriter
   ;DM:                   StringReader Reader EOFException)))
   (:import (System.IO EndOfStreamException StreamWriter StringReader         ;DM: Added
-                      StringWriter TextReader TextWriter)                    ;DM: Added
+                      StringWriter TextWriter)                    ;DM: Added
            (clojure.lang PushbackTextReader)                                 ;DM: Added
 		   (System.Globalization NumberStyles StringInfo)                    ;DM: Added
 		   ))                                                                ;DM: Added
@@ -44,8 +44,9 @@
 ;;; JSON READER
 
 (def ^:dynamic ^:private *keywordize*)
+(def ^:dynamic ^:private *bigdec*)
 
-(declare do-parse)
+(declare -parse)
 
 (defmacro ^:private codepoint [c]
   (int c))
@@ -79,7 +80,7 @@
       \, (recur (.Read stream) result)                                                        ;DM: .read 
       \] (persistent! result)                                                                 ;DM: .unread 
       (do (.Unread stream c)
-          (let [element (do-parse stream true nil)]
+          (let [element (-parse stream true nil)]
             (recur (.Read stream) (conj! result element)))))))	                              ;DM: .read 
 	
 (defn- parse-object [^PushbackTextReader stream]                                              ;DM: ^PushbackReader
@@ -101,7 +102,7 @@
               (throw (Exception. "JSON error (key missing value in object)")))
 
        (do (.Unread stream c)                                                                 ;DM: .unread 
-           (let [element (do-parse stream true nil)]
+           (let [element (-parse stream true nil)]
              (if (nil? key)
                (if (string? element)
                  (recur element result)                                                       ;DM: .read 
@@ -166,10 +167,12 @@
               (do (.Unread stream c)                                           ;DM: .unread
                   float?))))]
     (if floating-point?
-      (System.Double/Parse (str buffer))                                       ;DM: Double/valueOf 
+      (if *bigdec*
+        (bigdec (str buffer))
+        (System.Double/Parse (str buffer)))                                    ;DM: Double/valueOf 
       (System.Int64/Parse (str buffer)))))                                     ;DM: Long/valueOf
 
-(defn- do-parse
+(defn- -parse
   [^PushbackTextReader stream eof-error? eof-value]                            ;DM: ^PushbackReader
   (loop []
     (let [c (.Read stream)]                  ;DM: .read
@@ -220,17 +223,42 @@
           (throw (Exception. 
 		          (str "JSON error (unexpected character): " (char c)))))))))
 
-(defn parse [rdr & options]
-  (let [{:keys [keywordize eof-error? eof-value]
+(defn parse
+  "Parse a single item of JSON data from a java.io.Reader. Options are
+  key-value pairs, valid options are:
+
+     :keywordize boolean 
+
+        If true (default) convert JSON properties from strings into
+        keywords.
+
+     :bigdec boolean
+
+        If true use BigDecimal for decimal numbers instead of Double.
+        Default is false.
+
+     :eof-error? boolean
+
+        If true (default) will throw exception if the stream is empty.
+
+     :eof-value Object
+
+        Object to return if the stream is empty and eof-error? is
+        true. Default is nil."
+  [reader & options]
+  (let [{:keys [keywordize eof-error? eof-value bigdec]
          :or {keywordize false
+		      bigdec false
               eof-error? true}} options]
-    (binding [*keywordize* keywordize]
-      (do-parse rdr eof-error? eof-value))))
+    (binding [*keywordize* keywordize
+	          *bigdec* bigdec]
+      (-parse reader eof-error? eof-value))))
 
 (defn parse-string
-  "Reads one JSON value from input String."
-  ([string & options]
-     (apply parse (PushbackTextReader. (StringReader. string)) options)))        ;DM: PushbackReader.
+  "Reads one JSON value from input String. Options are the same as for
+  parse."
+  [string & options]
+  (apply parse (PushbackTextReader. (StringReader. string)) options))                  ;DM: PushbackReader.
 
 ;;; JSON WRITER
 
