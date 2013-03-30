@@ -171,8 +171,9 @@
   (if (< (count string) 18)  ; definitely fits in a Long
     (Int64/Parse string)                                                          ;DM: Long/valueOf
     (or (try (Int64/Parse string)                                                 ;DM: Long/valueOf
+	         (catch OverflowException e nil)                                      ;DM: Added
              (catch FormatException e nil))                                       ;DM: NumberFormatException
-        (bigint string))))
+        (clojure.lang.BigInteger/Parse string))))                                 ;DM: (bigint string) TODO: Fix when we have a BigInteger c-tor that takes a string
 
 (defn- read-decimal [^String string]
   (if *bigdec*
