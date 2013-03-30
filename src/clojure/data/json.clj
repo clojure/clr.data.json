@@ -1,4 +1,4 @@
-;; Copyright (c) Stuart Sierra, 2010. All rights reserved.  The use
+;; Copyright (c) Stuart Sierra, 2012. All rights reserved.  The use
 ;; and distribution terms for this software are covered by the Eclipse
 ;; Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
 ;; which can be found in the file epl-v10.html at the root of this
@@ -7,9 +7,8 @@
 ;; remove this notice, or any other, from this software.
 
 ;;  Modified to run under ClojureCLR by David Miller
-;;  January 1, 2012
 ;;  Changes are
-;; Copyright (c) David Miller, 2012. All rights reserved.  The use
+;; Copyright (c) David Miller, 2013. All rights reserved.  The use
 ;; and distribution terms for this software are covered by the Eclipse
 ;; Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
 ;; which can be found in the file epl-v10.html at the root of this
