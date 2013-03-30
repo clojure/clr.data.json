@@ -265,6 +265,15 @@
 (deftest default-throws-on-eof
   (is (thrown? System.IO.EndOfStreamException (json/read-str ""))))                      ;DM: java.io.EOFException
 
+(deftest throws-eof-in-unterminated-array
+  (is (thrown? System.IO.EndOfStreamException                                            ;DM: java.io.EOFException
+        (json/read-str "[1, "))))
+
+(deftest throws-eof-in-unterminated-string
+  (is (thrown? System.IO.EndOfStreamException                                            ;DM: java.io.EOFException
+        (json/read-str "\"missing end quote"))))
+
+  
 (deftest accept-eof
   (is (= ::eof (json/read-str "" :eof-error? false :eof-value ::eof))))
 
