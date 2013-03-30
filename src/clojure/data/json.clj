@@ -169,29 +169,26 @@
            \" (read-json-quoted-string stream)
 
            ;; Read null as nil
-           \n (let [ull [(.Read stream)                                             ;DM: .read
-                         (.Read stream)                                             ;DM: .read
-                         (.Read stream)]]                                           ;DM: .read
-                (if (= ull [(codepoint \u) (codepoint \l) (codepoint \l)])
-                  nil
-                  (throw (Exception. (str "JSON error (expected null): " c ull)))))
+           \n (if (and (= (codepoint \u) (.Read stream))                            ;DM: .read
+                       (= (codepoint \l) (.Read stream))                            ;DM: .read
+                       (= (codepoint \l) (.Read stream)))                           ;DM: .read
+                nil
+                (throw (Exception. (str "JSON error (expected null)"))))
 
            ;; Read true
-           \t (let [rue [(.Read stream)                                            ;DM: .read
-                         (.Read stream)                                            ;DM: .read
-                         (.Read stream)]]                                          ;DM: .read
-                (if (= rue [(codepoint \r) (codepoint \u) (codepoint \e)])
-                  true
-                  (throw (Exception. (str "JSON error (expected true): " c rue)))))
+           \t (if (and (= (codepoint \r) (.Read stream))                            ;DM: .read
+                       (= (codepoint \u) (.Read stream))                            ;DM: .read
+                       (= (codepoint \e) (.Read stream)))                           ;DM: .read
+                true
+                (throw (Exception. (str "JSON error (expected true)"))))
 
            ;; Read false
-           \f (let [alse [(.Read stream)                                          ;DM: .read
-                          (.Read stream)                                          ;DM: .read
-                          (.Read stream)                                          ;DM: .read
-                          (.Read stream)]]                                        ;DM: .read
-                (if (= alse [(codepoint \a) (codepoint \l) (codepoint \s) (codepoint \e)])
-                  false
-                  (throw (Exception. (str "JSON error (expected false): " c alse)))))
+           \f (if (and (= (codepoint \a) (.Read stream))                            ;DM: .read
+                       (= (codepoint \l) (.Read stream))                            ;DM: .read
+                       (= (codepoint \s) (.Read stream))                            ;DM: .read
+                       (= (codepoint \e) (.Read stream)))                           ;DM: .read
+                false
+                (throw (Exception. (str "JSON error (expected false)"))))
 
            ;; Read JSON objects
            \{ (read-json-object stream keywordize?)
