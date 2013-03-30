@@ -159,7 +159,7 @@
     (loop []
       (let [c (.Read stream)]                                                       ;DM: .read
         (when (neg? c)
-          (throw (EndOfStreamException. "JSON error (end-of-file inside array)")))  ;DM: EOFException.
+          (throw (EndOfStreamException. "JSON error (end-of-file inside string)")))  ;DM: EOFException.
         (codepoint-case c  
           \" (str buffer)
           \\ (do (.Append buffer (read-escaped-char stream))                        ;DM: .append
