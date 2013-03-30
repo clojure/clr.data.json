@@ -20,7 +20,7 @@
 ;; An end-of-line comment start with  ;DM:  indicates a change on that line.
 ;; The commented material indicates what was in the original code or indicates a new line inserted.
 ;; For example, a comment such as the following
-;;    (defn- read-json-array [^PushbackTextReader stream keywordize?]  ;DM: ^PushbackReader
+;;    (defn- read-array [^PushbackTextReader stream]  ;DM: ^PushbackReader
 ;; indicates that the type hint needed to be replaced
 ;; More substantial changes are commented more substantially.
 
@@ -29,6 +29,7 @@
       :doc "JavaScript Object Notation (JSON) parser/generator.
   See http://www.json.org/"}
   clojure.data.json
+  (:refer-clojure :exclude (read str))
   (:require [clojure.pprint :as pprint])
   ;DM: (:import (java.io PrintWriter PushbackReader StringWriter
   ;DM:                   StringReader Reader EOFException)))
@@ -52,11 +53,11 @@
         (name x)
         (nil? x)
         (throw (Exception. "JSON object properties may not be nil"))
-        :else (str x)))
+        :else (clojure.core/str x)))
 
 (defn- default-value-fn [k v] v)
 
-(declare -parse)
+(declare -read)
 
 (defmacro ^:private codepoint [c]
   (int c))
@@ -79,7 +80,7 @@
      ~@(when (odd? (count clauses))
          [(last clauses)])))
 
-(defn- parse-array [^PushbackTextReader stream]                                               ;DM: ^PushbackReader
+(defn- read-array [^PushbackTextReader stream]                                               ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening bracket.
    (loop [result (transient [])]
@@ -91,10 +92,10 @@
         \, (recur result)
         \] (persistent! result)
         (do (.Unread stream c)                                                                ;DM: .unread
-            (let [element (-parse stream true nil)]
+            (let [element (-read stream true nil)]
               (recur (conj! result element))))))))
 	
-(defn- parse-object [^PushbackTextReader stream]                                              ;DM: ^PushbackReader
+(defn- read-object [^PushbackTextReader stream]                                              ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening bracket.
   (loop [key nil, result (transient {})] 
@@ -113,7 +114,7 @@
               (throw (Exception. "JSON error (key missing value in object)")))
 
        (do (.Unread stream c)                                                                 ;DM: .unread 
-           (let [element (-parse stream true nil)]
+           (let [element (-read stream true nil)]
              (if (nil? key)
                (if (string? element)
                  (recur element result)                                                       ;DM: .read 
@@ -125,7 +126,7 @@
                            result
                            (assoc! result out-key out-value)))))))))))
 							
-(defn- parse-hex-char [^PushbackTextReader stream]                                   ;DM: ^PushbackReader
+(defn- read-hex-char [^PushbackTextReader stream]                                   ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; initial "\u".  Reads the next four characters from the stream.
   (let [a (.Read stream)                                                             ;DM: .read
@@ -135,10 +136,10 @@
     (when (or (neg? a) (neg? b) (neg? c) (neg? d))
       (throw (EndOfStreamException.                                                  ;DM: EOFException.
 	          "JSON error (end-of-file inside Unicode character escape)")))
-    (let [s (str (char a) (char b) (char c) (char d))]
+    (let [s (clojure.core/str (char a) (char b) (char c) (char d))]
       (char (Int32/Parse s NumberStyles/HexNumber)))))                               ;DM: (Integer/parseInt s 16)
 
-(defn- parse-escaped-char [^PushbackTextReader stream]                               ;DM: ^PushbackReader
+(defn- read-escaped-char [^PushbackTextReader stream]                               ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; initial backslash.
   (let [c (.Read stream)]                                                            ;DM: .read
@@ -149,9 +150,9 @@
       \n \newline
       \r \return
       \t \tab
-      \u (parse-hex-char stream))))  
+      \u (read-hex-char stream))))  
 
-(defn- parse-quoted-string [^PushbackTextReader stream]                             ;DM: ^PushbackReader
+(defn- read-quoted-string [^PushbackTextReader stream]                             ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening quotation mark.
   (let [buffer (StringBuilder.)]
@@ -160,25 +161,25 @@
         (when (neg? c)
           (throw (EndOfStreamException. "JSON error (end-of-file inside array)")))  ;DM: EOFException.
         (codepoint-case c  
-          \" (str buffer)
-          \\ (do (.Append buffer (parse-escaped-char stream))                       ;DM: .append
+          \" (clojure.core/str buffer)
+          \\ (do (.Append buffer (read-escaped-char stream))                        ;DM: .append
                  (recur))
           (do (.Append buffer (char c))                                             ;DM: .append
               (recur)))))))
 
-(defn- parse-integer [^String string]
+(defn- read-integer [^String string]
   (if (< (count string) 18)  ; definitely fits in a Long
     (Int64/Parse string)                                                          ;DM: Long/valueOf
     (or (try (Int64/Parse string)                                                 ;DM: Long/valueOf
              (catch FormatException e nil))                                       ;DM: NumberFormatException
         (bigint string))))
 
-(defn- parse-decimal [^String string]
+(defn- read-decimal [^String string]
   (if *bigdec*
     (clojure.lang.BigDecimal/Parse string)                               ;DM: (bigdec string)  -- TODO: we can change this back when we fix BigDecimal
     (Double/Parse string)))                                              ;DM: Double/valueOf
 
-(defn- parse-number [^PushbackTextReader stream]                         ;DM: ^PushbackReader
+(defn- read-number [^PushbackTextReader stream]                         ;DM: ^PushbackReader
   (let [buffer (StringBuilder.)
         decimal? (loop [decimal? false]
                    (let [c (.Read stream)]                               ;DM: .read
@@ -192,10 +193,10 @@
                        (do (.Unread stream c)                            ;DM: .unread
                            decimal?))))]
     (if decimal?
-      (parse-decimal (str buffer))
-      (parse-integer (str buffer)))))  
+      (read-decimal (clojure.core/str buffer))
+      (read-integer (clojure.core/str buffer)))))  
 
-(defn- -parse
+(defn- -read
   [^PushbackTextReader stream eof-error? eof-value]                            ;DM: ^PushbackReader
   (loop []
     (let [c (.Read stream)]                  ;DM: .read
@@ -210,24 +211,24 @@
           ;; Read numbers
           (\- \0 \1 \2 \3 \4 \5 \6 \7 \8 \9)
           (do (.Unread stream c)                                               ;DM: .unread
-              (parse-number stream))
+              (read-number stream))
 
           ;; Read strings
-          \" (parse-quoted-string stream)
+          \" (read-quoted-string stream)
 
           ;; Read null as nil
           \n (if (and (= (codepoint \u) (.Read stream))                       ;DM: .read
                       (= (codepoint \l) (.Read stream))                       ;DM: .read
                       (= (codepoint \l) (.Read stream)))                      ;DM: .read
                nil
-               (throw (Exception. (str "JSON error (expected null)"))))
+               (throw (Exception. "JSON error (expected null)")))
 
           ;; Read true
           \t (if (and (= (codepoint \r) (.Read stream))                       ;DM: .read
                       (= (codepoint \u) (.Read stream))                       ;DM: .read
                       (= (codepoint \e) (.Read stream)))                      ;DM: .read
                true
-               (throw (Exception. (str "JSON error (expected true)"))))
+               (throw (Exception. "JSON error (expected true)")))
 
           ;; Read false
           \f (if (and (= (codepoint \a) (.Read stream))                       ;DM: .read
@@ -235,19 +236,19 @@
                       (= (codepoint \s) (.Read stream))                       ;DM: .read
                       (= (codepoint \e) (.Read stream)))                      ;DM: .read
                false
-               (throw (Exception. (str "JSON error (expected false)"))))
+               (throw (Exception. "JSON error (expected false)")))
 
           ;; Read JSON objects
-          \{ (parse-object stream)
+          \{ (read-object stream)
 
           ;; Read JSON arrays
-          \[ (parse-array stream)
+          \[ (read-array stream)
 
           (throw (Exception. 
-		          (str "JSON error (unexpected character): " (char c)))))))))
+		          (clojure.core/str "JSON error (unexpected character): " (char c)))))))))
 
-(defn parse
-  "Parse a single item of JSON data from a java.io.Reader. Options are
+(defn read
+  "Reads a single item of JSON data from a java.io.Reader. Options are
   key-value pairs, valid options are:
 
      :eof-error? boolean
@@ -289,13 +290,13 @@
     (binding [*bigdec* bigdec
               *key-fn* key-fn
               *value-fn* value-fn]
-      (-parse (PushbackTextReader. reader) eof-error? eof-value))))                    ;DM: PushbackReader.
+      (-read (PushbackTextReader. reader) eof-error? eof-value))))                    ;DM: PushbackReader.
 
-(defn parse-str
+(defn read-str
   "Reads one JSON value from input String. Options are the same as for
-  parse."
+  read."
   [string & options]
-  (apply parse (StringReader. string) options))
+  (apply read (StringReader. string) options))
 
 ;;; JSON WRITER
 
@@ -303,10 +304,10 @@
 (def ^:dynamic ^:private *escape-slash*)
 
 (defprotocol JSONWriter
-  (-write-json [object out]
+  (-write [object out]
     "Print object to PrintWriter out as JSON"))
 
-(defn- write-string [^String s ^TextWriter out]                                   ;DM: ^CharSequence  ^PrintWriter
+(defn- write-string [^String s ^TextWriter out]                                        ;DM: ^CharSequence  ^PrintWriter
   (let [sb (StringBuilder. (count s))]
     (.Append sb \")                                                                    ;DM: .append
     (dotimes [i (count s)]
@@ -329,7 +330,7 @@
             (.Append sb (format "\\u%04x" cp)) ; Hexadecimal-escaped                   ;DM: .append
             (.Append sb (.get_Chars s i))))))                                          ;DM: (.appendCodePoint sb cp)
     (.Append sb \")                                                                    ;DM: .append
-    (.Write out (str sb))))                                                            ;DM: .print
+    (.Write out (clojure.core/str sb))))                                               ;DM: .print
 
 (defn- write-object [m ^TextWriter out]                                 ;DM: ^PrintWriter
   (.Write out \{)                                                       ;DM: .print
@@ -343,32 +344,32 @@
         (when-not (= *value-fn* out-value)
           (write-string out-key out)
           (.Write out \:)                                               ;DM: .print
-          (-write-json out-value out)))
+          (-write out-value out)))
       (let [nxt (next x)]
         (when (seq nxt)
           (.Write out \,)                                                             ;DM: .print
           (recur nxt)))))
   (.Write out \}))                                                                    ;DM: .print
 
-(defn- write-array [s ^TextWriter out]                                           ;DM: ^PrintWriter
+(defn- write-array [s ^TextWriter out]                                                ;DM: ^PrintWriter
   (.Write out \[)                                                                     ;DM: .print
   (loop [x s]
     (when (seq x)
       (let [fst (first x)
             nxt (next x)]
-        (-write-json fst out)
+        (-write fst out)
         (when (seq nxt)
           (.Write out \,)                                                             ;DM: .print
           (recur nxt)))))
   (.Write out \]))                                                                    ;DM: .print
 
-(defn- write-bignum [x ^TextWriter out]                                          ;DM: ^PrintWriter
-  (.Write out (str x)))                                                               ;DM: .print
+(defn- write-bignum [x ^TextWriter out]                                               ;DM: ^PrintWriter
+  (.Write out (clojure.core/str x)))                                                  ;DM: .print
 
-(defn- write-plain [x ^TextWriter out]                                           ;DM: ^PrintWriter
+(defn- write-plain [x ^TextWriter out]                                                ;DM: ^PrintWriter
   (.Write out x))                                                                     ;DM: .print
 
-(defn- write-null [x ^TextWriter out]                                            ;DM: ^PrintWriter
+(defn- write-null [x ^TextWriter out]                                                 ;DM: ^PrintWriter
   (.Write out "null"))                                                                ;DM: .print
 
 (defn- write-named [x out]
@@ -376,79 +377,79 @@
 
 (defn- write-generic [x out]
   (if (.IsArray (class x))                                                            ;DM: isArray
-    (-write-json (seq x) out)
-    (throw (Exception. (str "Don't know how to write JSON of " (class x))))))
+    (-write (seq x) out)
+    (throw (Exception. (clojure.core/str "Don't know how to write JSON of " (class x))))))
 
 (defn- write-ratio [x out]
-  (-write-json (double x) out))
+  (-write (double x) out))
 
-;;DM: Added write-json-float
-(defn- write-json-float [x ^TextWriter out] 
+;;DM: Added write-float
+(defn- write-float [x ^TextWriter out] 
   (.Write out (fp-str x)))                                  
 
   
 ;DM: ;; nil, true, false
-;DM: (extend nil                    JSONWriter {:-write-json write-null})
-;DM: (extend java.lang.Boolean      JSONWriter {:-write-json write-plain})
+;DM: (extend nil                    JSONWriter {:-write write-null})
+;DM: (extend java.lang.Boolean      JSONWriter {:-write write-plain})
 ;DM: 
 ;DM: ;; Numbers
-;DM: (extend java.lang.Number       JSONWriter {:-write-json write-plain})
-;DM: (extend clojure.lang.Ratio     JSONWriter {:-write-json write-ratio})
-;DM: (extend clojure.lang.BigInt    JSONWriter {:-write-json write-bignum})
-;DM: (extend java.math.BigInteger   JSONWriter {:-write-json write-bignum})
-;DM: (extend java.math.BigDecimal   JSONWriter {:-write-json write-bignum})
+;DM: (extend java.lang.Number       JSONWriter {:-write write-plain})
+;DM: (extend clojure.lang.Ratio     JSONWriter {:-write write-ratio})
+;DM: (extend clojure.lang.BigInt    JSONWriter {:-write write-bignum})
+;DM: (extend java.math.BigInteger   JSONWriter {:-write write-bignum})
+;DM: (extend java.math.BigDecimal   JSONWriter {:-write write-bignum})
 ;DM: 
 ;DM: ;; Symbols, Keywords, and Strings
-;DM: (extend clojure.lang.Named     JSONWriter {:-write-json write-named})
-;DM: (extend java.lang.CharSequence JSONWriter {:-write-json write-string})
+;DM: (extend clojure.lang.Named     JSONWriter {:-write write-named})
+;DM: (extend java.lang.CharSequence JSONWriter {:-write write-string})
 ;DM: 
 ;DM: ;; Collections
-;DM: (extend java.util.Map          JSONWriter {:-write-json write-object})
-;DM: (extend java.util.Collection   JSONWriter {:-write-json write-array})
+;DM: (extend java.util.Map          JSONWriter {:-write write-object})
+;DM: (extend java.util.Collection   JSONWriter {:-write write-array})
 ;DM: 
 ;DM: ;; Maybe a Java array, otherwise fail
-;DM: (extend java.lang.Object       JSONWriter {:-write-json write-generic})
+;DM: (extend java.lang.Object       JSONWriter {:-write write-generic})
 
 ;;DM: Following added
 ;; nil, true, false
-(extend nil JSONWriter        {:-write-json write-null})
-(extend clojure.lang.Named JSONWriter         {:-write-json write-named})
-(extend System.Boolean JSONWriter         {:-write-json write-plain})
+(extend nil                             JSONWriter {:-write write-null})
+(extend clojure.lang.Named              JSONWriter {:-write write-named})
+(extend System.Boolean                  JSONWriter {:-write write-plain})
 
 ;; Numbers
 ;; no equivalent to java.lang.Number.  Sigh.
-(extend System.Byte                     JSONWriter {:-write-json write-plain})
-(extend System.SByte                    JSONWriter {:-write-json write-plain})
-(extend System.Int16                    JSONWriter {:-write-json write-plain})
-(extend System.Int32                    JSONWriter {:-write-json write-plain})
-(extend System.Int64                    JSONWriter {:-write-json write-plain})
-(extend System.UInt16                   JSONWriter {:-write-json write-plain})
-(extend System.UInt32                   JSONWriter {:-write-json write-plain})
-(extend System.UInt64                   JSONWriter {:-write-json write-plain})
-(extend System.Double                   JSONWriter {:-write-json write-json-float})
-(extend System.Single                   JSONWriter {:-write-json write-json-float})
-(extend System.Decimal                  JSONWriter {:-write-json write-plain})
-(extend clojure.lang.Ratio              JSONWriter {:-write-json write-ratio})
-(extend clojure.lang.BigInt             JSONWriter {:-write-json write-bignum})
-(extend clojure.lang.BigInteger         JSONWriter {:-write-json write-bignum})
-(extend clojure.lang.BigDecimal         JSONWriter {:-write-json write-bignum})
+(extend System.Byte                     JSONWriter {:-write write-plain})
+(extend System.SByte                    JSONWriter {:-write write-plain})
+(extend System.Int16                    JSONWriter {:-write write-plain})
+(extend System.Int32                    JSONWriter {:-write write-plain})
+(extend System.Int64                    JSONWriter {:-write write-plain})
+(extend System.UInt16                   JSONWriter {:-write write-plain})
+(extend System.UInt32                   JSONWriter {:-write write-plain})
+(extend System.UInt64                   JSONWriter {:-write write-plain})
+(extend System.Double                   JSONWriter {:-write write-float})
+(extend System.Single                   JSONWriter {:-write write-float})
+(extend System.Decimal                  JSONWriter {:-write write-plain})
+(extend clojure.lang.Ratio              JSONWriter {:-write write-ratio})
+(extend clojure.lang.BigInt             JSONWriter {:-write write-bignum})
+(extend clojure.lang.BigInteger         JSONWriter {:-write write-bignum})
+(extend clojure.lang.BigDecimal         JSONWriter {:-write write-bignum})
 
 ;; Symbols, Keywords, and Strings
-(extend clojure.lang.Named              JSONWriter {:-write-json write-named})
-(extend System.String                   JSONWriter {:-write-json write-string})
+(extend clojure.lang.Named              JSONWriter {:-write write-named})
+(extend System.String                   JSONWriter {:-write write-string})
 
 ;; Collections
-(extend clojure.lang.IPersistentMap     JSONWriter {:-write-json write-object})
-(extend System.Collections.IDictionary  JSONWriter {:-write-json write-object})
+(extend clojure.lang.IPersistentMap     JSONWriter {:-write write-object})
+(extend System.Collections.IDictionary  JSONWriter {:-write write-object})
 ;; Cannot handle generic types!!!! 
-(extend System.Collections.ICollection  JSONWriter {:-write-json write-array})
-(extend clojure.lang.ISeq               JSONWriter {:-write-json write-array})
+(extend System.Collections.ICollection  JSONWriter {:-write write-array})
+(extend clojure.lang.ISeq               JSONWriter {:-write write-array})
 
 ;; Maybe a Java array, otherwise fail
-(extend System.Object                   JSONWriter {:-write-json write-generic})
+(extend System.Object                   JSONWriter {:-write write-generic})
 ;;DM: End addition
 
-(defn write-json
+(defn write
   "Write JSON-formatted output to a java.io.Writer.    Options are 
   key-value pairs, valid options are:
 
@@ -489,45 +490,45 @@
               *escape-slash* escape-slash
               *key-fn* key-fn
               *value-fn* value-fn]
-     (-write-json x (if (instance? TextWriter writer) writer (StreamWriter. writer))))))    ;DM: (-write-json x(PrintWriter. writer))
+     (-write x (if (instance? TextWriter writer) writer (StreamWriter. writer))))))    ;DM: (-write x(PrintWriter. writer))
 	
-(defn json-str
+(defn str
   "Converts x to a JSON-formatted string. Options are the same as
-  write-json."
+  write."
   [x & options]
   (let [sw (StringWriter.)]
-    (apply write-json x sw options)
+    (apply write x sw options)
     (.ToString sw)))                                                  ;DM: .toString
 
 ;;; JSON PRETTY-PRINTER
 
 ;; Based on code by Tom Faulhaber
 
-(defn- pprint-json-array [s] 
+(defn- pprint-array [s] 
   ((pprint/formatter-out "~<[~;~@{~w~^, ~:_~}~;]~:>") s))
 
-(defn- pprint-json-object [m]
+(defn- pprint-object [m]
   ((pprint/formatter-out "~<{~;~@{~<~w:~_~w~:>~^, ~_~}~;}~:>") 
    (for [[k v] m] [(*key-fn* k) v])))
 
-(defn- pprint-json-generic [x]
+(defn- pprint-generic [x]
   (if (.IsArray (class x))                                                   ;DM: isArray
-    (pprint-json-array (seq x))
+    (pprint-array (seq x))
     ;; pprint proxies Writer, so we can't just wrap it	
-    (print (with-out-str (-write-json x (if (instance? TextWriter *out*) *out* (StreamWriter. *out*)))))))           ; DM: PrintWriter
+    (print (with-out-str (-write x (if (instance? TextWriter *out*) *out* (StreamWriter. *out*)))))))           ; DM: PrintWriter
 
-(defn- pprint-json-dispatch [x]
+(defn- pprint-dispatch [x]
   (cond (nil? x) (print "null")
         (true? x) (print "true")                                                ;DM: Added
 		(false? x) (print "false")                                              ;DM: Added
-        (instance? System.Collections.IDictionary x) (pprint-json-object x)     ;DM: java.util.Map
-        (instance? System.Collections.ICollection x) (pprint-json-array x)      ;DM: java.util.Collection
-        (instance? clojure.lang.ISeq x) (pprint-json-array x)
-        :else (pprint-json-generic x)))
+        (instance? System.Collections.IDictionary x) (pprint-object x)     ;DM: java.util.Map
+        (instance? System.Collections.ICollection x) (pprint-array x)      ;DM: java.util.Collection
+        (instance? clojure.lang.ISeq x) (pprint-array x)
+        :else (pprint-generic x)))
 
-(defn pprint-json
+(defn pprint
   "Pretty-prints JSON representation of x to *out*. Options are the
-  same as for write-json except :value-fn, which is not supported."
+  same as for write except :value-fn, which is not supported."
   [x & options]
   (let [{:keys [escape-unicode escape-slash key-fn]
          :or {escape-unicode true
@@ -536,7 +537,7 @@
     (binding [*escape-unicode* escape-unicode
               *escape-slash* escape-slash
               *key-fn* key-fn]
-      (pprint/write x :dispatch pprint-json-dispatch))))
+      (pprint/write x :dispatch pprint-dispatch))))
 	
 ;; Local Variables:
 ;; mode: clojure
