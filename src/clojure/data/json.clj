@@ -174,7 +174,7 @@
 
 (defn- parse-decimal [^String string]
   (if *bigdec*
-    (bigdec string)
+    (clojure.lang.BigDecimal/Parse string)                               ;DM: (bigdec string)  -- TODO: we can change this back when we fix BigDecimal
     (Double/Parse string)))                                              ;DM: Double/valueOf
 
 (defn- parse-number [^PushbackTextReader stream]                         ;DM: ^PushbackReader
