@@ -25,8 +25,8 @@
 ;; indicates that the type hint needed to be replaced
 ;; More substantial changes are commented more substantially.
 
-(ns cljclr.data.json-test                                                       ;DM: clojure.data.json-test
-  (:use clojure.test cljclr.data.json))                                         ;DM: cljclr.data.json
+(ns clojure.data.json-test
+  (:use clojure.test clojure.data.json))
 
 (deftest can-read-from-pushback-reader
   (let [s (clojure.lang.PushbackTextReader. (System.IO.StringReader. "42"))]    ;DM: java.io.PushbackReader. java.io.StringReader.
