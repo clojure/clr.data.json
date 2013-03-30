@@ -488,9 +488,7 @@
               *escape-slash* escape-slash
               *key-fn* key-fn
               *value-fn* value-fn]
-      (let [out-value (value-fn x)]
-        (when-not (= *value-fn* out-value)
-         (-write-json out-value (if (instance? TextWriter writer) writer (StreamWriter. writer))))))))    ;DM: (-write-json out-value (PrintWriter. writer))
+     (-write-json x (if (instance? TextWriter writer) writer (StreamWriter. writer))))))    ;DM: (-write-json x(PrintWriter. writer))
 	
 (defn json-str
   "Converts x to a JSON-formatted string. Options are the same as
@@ -504,36 +502,40 @@
 
 ;; Based on code by Tom Faulhaber
 
-(defn- pprint-json-array [s escape-unicode] 
+(defn- pprint-json-array [s] 
   ((pprint/formatter-out "~<[~;~@{~w~^, ~:_~}~;]~:>") s))
 
-(defn- pprint-json-object [m escape-unicode]
+(defn- pprint-json-object [m]
   ((pprint/formatter-out "~<{~;~@{~<~w:~_~w~:>~^, ~_~}~;}~:>") 
-   (for [[k v] m] [(as-str k) v])))
+   (for [[k v] m] [(*key-fn* k) v])))
 
-(defn- pprint-json-generic [x escape-unicode]
-  (if (.IsArray (class x))                                                  ;DM: isArray
-    (pprint-json-array (seq x) escape-unicode)
-    (print (json-str x :escape-unicode escape-unicode))))
+(defn- pprint-json-generic [x]
+  (if (.IsArray (class x))                                                   ;DM: isArray
+    (pprint-json-array (seq x))
+    ;; pprint proxies Writer, so we can't just wrap it	
+    (print (with-out-str (-write-json x (if (instance? TextWriter *out*) *out* (StreamWriter. *out*)))))))           ; DM: PrintWriter
 
-(defn- pprint-json-dispatch [x escape-unicode]
+(defn- pprint-json-dispatch [x]
   (cond (nil? x) (print "null")
-        (true? x) (print "true")                                                                ;DM: Added
-		(false? x) (print "false")                                                              ;DM: Added
-        (instance? System.Collections.IDictionary x) (pprint-json-object x escape-unicode)      ;DM: java.util.Map
-        (instance? System.Collections.ICollection x) (pprint-json-array x escape-unicode)       ;DM: java.util.Collection
-        (instance? clojure.lang.ISeq x) (pprint-json-array x escape-unicode)
-        :else (pprint-json-generic x escape-unicode)))
+        (true? x) (print "true")                                                ;DM: Added
+		(false? x) (print "false")                                              ;DM: Added
+        (instance? System.Collections.IDictionary x) (pprint-json-object x)     ;DM: java.util.Map
+        (instance? System.Collections.ICollection x) (pprint-json-array x)      ;DM: java.util.Collection
+        (instance? clojure.lang.ISeq x) (pprint-json-array x)
+        :else (pprint-json-generic x)))
 
 (defn pprint-json
-  "Pretty-prints JSON representation of x to *out*.
-
-  Valid options are:
-    :escape-unicode false
-        to turn off \\uXXXX escapes of Unicode characters."
+  "Pretty-prints JSON representation of x to *out*. Options are the
+  same as for write-json except :value-fn, which is not supported."
   [x & options]
-  (let [{:keys [escape-unicode] :or {escape-unicode true}} options]
-    (pprint/write x :dispatch #(pprint-json-dispatch % escape-unicode))))
+  (let [{:keys [escape-unicode escape-slash key-fn]
+         :or {escape-unicode true
+              escape-slash true
+              key-fn default-write-key-fn}} options]
+    (binding [*escape-unicode* escape-unicode
+              *escape-slash* escape-slash
+              *key-fn* key-fn]
+      (pprint/write x :dispatch pprint-json-dispatch))))
 	
 ;; Local Variables:
 ;; mode: clojure
