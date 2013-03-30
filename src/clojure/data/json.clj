@@ -150,6 +150,24 @@
           (do (.Append buffer (char c))                                                          ;DM: .append
               (recur (.Read stream)))))))	                                                     ;DM: .read
 
+(defn- read-json-number [^PushbackTextReader stream]                            ;DM: ^PushbackReader
+  (let [buffer (StringBuilder.)
+        floating-point?
+          (loop [float? false]
+            (let [c (.Read stream)]                                            ;DM: .read
+              (codepoint-case c
+                (\- \+ \0 \1 \2 \3 \4 \5 \6 \7 \8 \9)
+                (do (.Append buffer (char c))                                  ;DM: .append
+                    (recur float?))
+                (\e \E \.)
+                (do (.Append buffer (char c))                                  ;DM: .append
+                    (recur true))
+                (do (.Unread stream c)                                         ;DM: .unread
+                    float?))))]
+    (if floating-point?
+      (System.Double/Parse (str buffer))                                       ;DM: Double/valueOf 
+      (System.Int64/Parse (str buffer)))))                                     ;DM: Long/valueOf
+			  
 (defn- read-json-reader
   ([^PushbackTextReader stream keywordize? eof-error? eof-value]                     ;DM: ^PushbackReader
      (loop [c (.Read stream)]                                                        ;DM: .read
@@ -160,10 +178,10 @@
 	 (codepoint-case c
            :whitespace (recur (.Read stream))                                        ;DM: .read
 
-           ;; Read numbers with Clojure reader
+           ;; Read numbers
            (\- \0 \1 \2 \3 \4 \5 \6 \7 \8 \9)
            (do (.Unread stream c)                                                    ;DM: .unread
-               (read stream true nil))
+               (read-json-number stream))
 
            ;; Read strings
            \" (read-json-quoted-string stream)
@@ -197,40 +215,18 @@
            \[ (read-json-array stream keywordize?)
 
            (throw (Exception. (str "JSON error (unexpected character): " (char c)))))))))
-	   
-(defprotocol Read-JSON-From
-  (read-json-from [input keywordize? eof-error? eof-value]
-                  "Reads one JSON value from input String or Reader.
-  If keywordize? is true, object keys will be converted to keywords.
-  If eof-error? is true, empty input will throw an EOFException; if
-  false EOF will return eof-value. "))
 
-(extend-protocol
- Read-JSON-From
- String
- (read-json-from [input keywordize? eof-error? eof-value]
-                 (read-json-reader (PushbackTextReader. (StringReader. input))         ;DM: PushbackReader. 
-                                   keywordize? eof-error? eof-value))
- PushbackTextReader                                                                    ;DM: PushbackReader
- (read-json-from [input keywordize? eof-error? eof-value]
-                 (read-json-reader input
-                                   keywordize? eof-error? eof-value))
- TextReader                                                                            ;DM: Reader
- (read-json-from [input keywordize? eof-error? eof-value]
-                 (read-json-reader (PushbackTextReader. input)                         ;DM: PushbackReader.
-                                   keywordize? eof-error? eof-value)))
-
-(defn read-json
-  "Reads one JSON value from input String or Reader.
+(defn read-json-string
+  "Reads one JSON value from input String.
   If keywordize? is true (default), object keys will be converted to
   keywords.  If eof-error? is true (default), empty input will throw
   an EOFException; if false EOF will return eof-value. "
   ([input]
-     (read-json-from input true true nil))
+     (read-json-string input true true nil))
   ([input keywordize?]
-     (read-json-from input keywordize? true nil))
+     (read-json-string input keywordize? true nil))
   ([input keywordize? eof-error? eof-value]
-     (read-json-from input keywordize? eof-error? eof-value)))
+     (read-json-reader (PushbackTextReader. (StringReader. input)) keywordize? eof-error? eof-value)))       ;DM: PushbackReader.
 
 
 ;;; JSON PRINTER
