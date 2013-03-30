@@ -238,8 +238,8 @@
 
      :keywordize boolean 
 
-        If true (default) convert JSON properties from strings into
-        keywords.
+        If true (default) convert JSON property names from strings
+		into keywords.
 
      :bigdec boolean
 
@@ -253,7 +253,7 @@
      :eof-value Object
 
         Object to return if the stream is empty and eof-error? is
-        true. Default is nil."
+        false. Default is nil."
   [reader & options]
   (let [{:keys [keywordize eof-error? eof-value bigdec]
          :or {keywordize false
