@@ -152,25 +152,34 @@
           (do (.Append buffer (char c))                                             ;DM: .append
               (recur)))))))
 
-(defn- parse-number [^PushbackTextReader stream]                               ;DM: ^PushbackReader
+(defn- parse-integer [^String string]
+  (if (< (count string) 18)  ; definitely fits in a Long
+    (Int64/Parse string)                                                          ;DM: Long/valueOf
+    (or (try (Int64/Parse string)                                                 ;DM: Long/valueOf
+             (catch FormatException e nil))                                       ;DM: NumberFormatException
+        (bigint string))))
+
+(defn- parse-decimal [^String string]
+  (if *bigdec*
+    (bigdec string)
+    (Double/Parse string)))                                              ;DM: Double/valueOf
+
+(defn- parse-number [^PushbackTextReader stream]                         ;DM: ^PushbackReader
   (let [buffer (StringBuilder.)
-        floating-point?
-        (loop [float? false]
-          (let [c (.Read stream)]                                              ;DM: .read
-            (codepoint-case c
-              (\- \+ \0 \1 \2 \3 \4 \5 \6 \7 \8 \9)
-              (do (.Append buffer (char c))                                    ;DM: .append
-                  (recur float?))
-              (\e \E \.)
-              (do (.Append buffer (char c))                                    ;DM: .append
-                  (recur true))
-              (do (.Unread stream c)                                           ;DM: .unread
-                  float?))))]
-    (if floating-point?
-      (if *bigdec*
-        (bigdec (str buffer))
-        (System.Double/Parse (str buffer)))                                    ;DM: Double/valueOf 
-      (System.Int64/Parse (str buffer)))))                                     ;DM: Long/valueOf
+        decimal? (loop [decimal? false]
+                   (let [c (.Read stream)]                               ;DM: .read
+                     (codepoint-case c
+                       (\- \+ \0 \1 \2 \3 \4 \5 \6 \7 \8 \9)
+                       (do (.Append buffer (char c))                     ;DM: .append
+                           (recur decimal?))
+                       (\e \E \.)
+                       (do (.Append buffer (char c))                     ;DM: .append
+                           (recur true))
+                       (do (.Unread stream c)                            ;DM: .unread
+                           decimal?))))]
+    (if decimal?
+      (parse-decimal (str buffer))
+      (parse-integer (str buffer)))))  
 
 (defn- -parse
   [^PushbackTextReader stream eof-error? eof-value]                            ;DM: ^PushbackReader
@@ -269,8 +278,8 @@
   (-write-json [object out]
     "Print object to PrintWriter out as JSON"))
 
-(defn- write-json-string [^String s ^TextWriter out]                                   ;DM: ^CharSequence  ^PrintWriter
-  (let [sb (StringBuilder. ^Int32 (count s))]                                          ;DM: ^Integer
+(defn- write-string [^String s ^TextWriter out]                                   ;DM: ^CharSequence  ^PrintWriter
+  (let [sb (StringBuilder. (count s))]
     (.Append sb \")                                                                    ;DM: .append
     (dotimes [i (count s)]
       (let [cp (int (.get_Chars s i))]                                                 ;DM: (Character/codePointAt s i)
@@ -300,14 +309,14 @@
     (name x)
     (str x)))
 
-(defn- write-json-object [m ^TextWriter out]                               ;DM: ^PrintWriter
+(defn- write-object [m ^TextWriter out]                               ;DM: ^PrintWriter
   (.Write out \{)                                                          ;DM: .print
   (loop [x m]
     (when (seq m)
       (let [[k v] (first x)]
         (when (nil? k)
           (throw (Exception. "JSON object keys cannot be nil/null")))
-	(write-json-string (as-str k) out)
+	(write-string (as-str k) out)
         (.Write out \:)                                                               ;DM: .print
         (-write-json v out))
       (let [nxt (next x)]
@@ -316,7 +325,7 @@
           (recur nxt)))))
   (.Write out \}))                                                                    ;DM: .print
 
-(defn- write-json-array [s ^TextWriter out]                                           ;DM: ^PrintWriter
+(defn- write-array [s ^TextWriter out]                                           ;DM: ^PrintWriter
   (.Write out \[)                                                                     ;DM: .print
   (loop [x s]
     (when (seq x)
@@ -328,24 +337,24 @@
           (recur nxt)))))
   (.Write out \]))                                                                    ;DM: .print
 
-(defn- write-json-bignum [x ^TextWriter out]                                          ;DM: ^PrintWriter
+(defn- write-bignum [x ^TextWriter out]                                          ;DM: ^PrintWriter
   (.Write out (str x)))                                                               ;DM: .print
 
-(defn- write-json-plain [x ^TextWriter out]                                           ;DM: ^PrintWriter
+(defn- write-plain [x ^TextWriter out]                                           ;DM: ^PrintWriter
   (.Write out x))                                                                     ;DM: .print
 
-(defn- write-json-null [x ^TextWriter out]                                            ;DM: ^PrintWriter
+(defn- write-null [x ^TextWriter out]                                            ;DM: ^PrintWriter
   (.Write out "null"))                                                                ;DM: .print
 
-(defn- write-json-named [x ^TextWriter out]                                          ;DM: ^PrintWriter
-  (write-json-string (name x) out))
+(defn- write-named [x out]
+  (write-string (name x) out))
 
-(defn- write-json-generic [x out]
+(defn- write-generic [x out]
   (if (.IsArray (class x))                                                            ;DM: isArray
     (-write-json (seq x) out)
     (throw (Exception. (str "Don't know how to write JSON of " (class x))))))
 
-(defn- write-json-ratio [x out]
+(defn- write-ratio [x out]
   (-write-json (double x) out))
 
 ;;DM: Added write-json-float
@@ -353,84 +362,78 @@
   (.Write out (fp-str x)))                                  
 
   
-;;DM: (extend nil JSONWriter
-;;DM:         {:-write-json write-json-null})
-;;DM: (extend clojure.lang.Named JSONWriter
-;;DM:         {:-write-json write-json-named})
-;;DM: (extend java.lang.Boolean JSONWriter
-;;DM:         {:-write-json write-json-plain})
-;;DM: (extend java.lang.Number JSONWriter
-;;DM:         {:-write-json write-json-plain})
-;;DM: (extend java.math.BigInteger JSONWriter
-;;DM:         {:-write-json write-json-bignum})
-;;DM: (extend java.math.BigDecimal JSONWriter
-;;DM:         {:-write-json write-json-bignum})
-;;DM: (extend clojure.lang.Ratio JSONWriter
-;;DM:         {:-write-json write-json-ratio})
-;;DM: (extend java.lang.CharSequence JSONWriter
-;;DM:         {:-write-json write-json-string})
-;;DM: (extend java.util.Map JSONWriter
-;;DM:         {:-write-json write-json-object})
-;;DM: (extend java.util.Collection JSONWriter
-;;DM:         {:-write-json write-json-array})
-;;DM: (extend clojure.lang.ISeq JSONWriter
-;;DM:         {:-write-json write-json-array})
-;;DM: (extend java.lang.Object JSONWriter
-;;DM:         {:-write-json write-json-generic})
+;DM: ;; nil, true, false
+;DM: (extend nil                    JSONWriter {:-write-json write-null})
+;DM: (extend java.lang.Boolean      JSONWriter {:-write-json write-plain})
+;DM: 
+;DM: ;; Numbers
+;DM: (extend java.lang.Number       JSONWriter {:-write-json write-plain})
+;DM: (extend clojure.lang.Ratio     JSONWriter {:-write-json write-ratio})
+;DM: (extend clojure.lang.BigInt    JSONWriter {:-write-json write-bignum})
+;DM: (extend java.math.BigInteger   JSONWriter {:-write-json write-bignum})
+;DM: (extend java.math.BigDecimal   JSONWriter {:-write-json write-bignum})
+;DM: 
+;DM: ;; Symbols, Keywords, and Strings
+;DM: (extend clojure.lang.Named     JSONWriter {:-write-json write-named})
+;DM: (extend java.lang.CharSequence JSONWriter {:-write-json write-string})
+;DM: 
+;DM: ;; Collections
+;DM: (extend java.util.Map          JSONWriter {:-write-json write-object})
+;DM: (extend java.util.Collection   JSONWriter {:-write-json write-array})
+;DM: 
+;DM: ;; Maybe a Java array, otherwise fail
+;DM: (extend java.lang.Object       JSONWriter {:-write-json write-generic})
 
 ;;DM: Following added
-;;DM: Following added
-(extend nil JSONWriter
-        {:-write-json write-json-null})
-(extend clojure.lang.Named JSONWriter
-        {:-write-json write-json-named})
-(extend System.Boolean JSONWriter
-        {:-write-json write-json-plain})
-;;; no equivalent to java.lang.Number.  Sigh.
-(extend System.Byte JSONWriter {:-write-json write-json-plain})
-(extend System.SByte JSONWriter {:-write-json write-json-plain})
-(extend System.Int16 JSONWriter {:-write-json write-json-plain})
-(extend System.Int32 JSONWriter {:-write-json write-json-plain})
-(extend System.Int64 JSONWriter {:-write-json write-json-plain})
-(extend System.UInt16 JSONWriter {:-write-json write-json-plain})
-(extend System.UInt32 JSONWriter {:-write-json write-json-plain})
-(extend System.UInt64 JSONWriter {:-write-json write-json-plain})
-(extend System.Double JSONWriter {:-write-json write-json-float})
-(extend System.Single JSONWriter {:-write-json write-json-float})
-(extend System.Decimal JSONWriter {:-write-json write-json-plain})
-(extend clojure.lang.BigInt JSONWriter
-        {:-write-json write-json-bignum})
-(extend clojure.lang.BigInteger JSONWriter
-        {:-write-json write-json-bignum})
-(extend clojure.lang.BigDecimal JSONWriter
-        {:-write-json write-json-bignum})
-(extend clojure.lang.Ratio JSONWriter
-        {:-write-json write-json-ratio})
-(extend System.String JSONWriter
-        {:-write-json write-json-string})
-(extend clojure.lang.IPersistentMap JSONWriter
-        {:-write-json write-json-object})
-(extend System.Collections.IDictionary JSONWriter
-        {:-write-json write-json-object})
-;;; Cannot handle generic types!!!!
-(extend System.Collections.ICollection JSONWriter
-        {:-write-json write-json-array})
-(extend clojure.lang.ISeq JSONWriter
-        {:-write-json write-json-array})
-(extend System.Object JSONWriter
-        {:-write-json write-json-generic})
+;; nil, true, false
+(extend nil JSONWriter        {:-write-json write-null})
+(extend clojure.lang.Named JSONWriter         {:-write-json write-named})
+(extend System.Boolean JSONWriter         {:-write-json write-plain})
+
+;; Numbers
+;; no equivalent to java.lang.Number.  Sigh.
+(extend System.Byte                     JSONWriter {:-write-json write-plain})
+(extend System.SByte                    JSONWriter {:-write-json write-plain})
+(extend System.Int16                    JSONWriter {:-write-json write-plain})
+(extend System.Int32                    JSONWriter {:-write-json write-plain})
+(extend System.Int64                    JSONWriter {:-write-json write-plain})
+(extend System.UInt16                   JSONWriter {:-write-json write-plain})
+(extend System.UInt32                   JSONWriter {:-write-json write-plain})
+(extend System.UInt64                   JSONWriter {:-write-json write-plain})
+(extend System.Double                   JSONWriter {:-write-json write-json-float})
+(extend System.Single                   JSONWriter {:-write-json write-json-float})
+(extend System.Decimal                  JSONWriter {:-write-json write-plain})
+(extend clojure.lang.Ratio              JSONWriter {:-write-json write-ratio})
+(extend clojure.lang.BigInt             JSONWriter {:-write-json write-bignum})
+(extend clojure.lang.BigInteger         JSONWriter {:-write-json write-bignum})
+(extend clojure.lang.BigDecimal         JSONWriter {:-write-json write-bignum})
+
+;; Symbols, Keywords, and Strings
+(extend clojure.lang.Named              JSONWriter {:-write-json write-named})
+(extend System.String                   JSONWriter {:-write-json write-string})
+
+;; Collections
+(extend clojure.lang.IPersistentMap     JSONWriter {:-write-json write-object})
+(extend System.Collections.IDictionary  JSONWriter {:-write-json write-object})
+;; Cannot handle generic types!!!! 
+(extend System.Collections.ICollection  JSONWriter {:-write-json write-array})
+(extend clojure.lang.ISeq               JSONWriter {:-write-json write-array})
+
+;; Maybe a Java array, otherwise fail
+(extend System.Object                   JSONWriter {:-write-json write-generic})
 ;;DM: End addition
 
 (defn write-json
   "Write JSON-formatted output to a java.io.Writer.
    Options are key-value pairs, valid options are:
 
-    :escape-unicode false
-        to turn off \\uXXXX escapes of Unicode characters
+    :escape-unicode boolean
 
-    :escape-slash false
-        to turn of escaping / as \\/"
-  [x writer & options]
+       If true (default) non-ASCII characters are escaped as \\uXXXX
+
+    :escape-slash boolean
+       If true (default) the slash / is escaped as \\/"
+  [x writer & options]                                                                       ; ^Writer  -- can't do. we might get a TextWriter or a Stream
   (let [{:keys [escape-unicode escape-slash]
          :or {escape-unicode true
               escape-slash true}} options]
