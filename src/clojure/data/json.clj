@@ -50,50 +50,68 @@
 
 (set! *warn-on-reflection* true)
 
-(defmacro ^{:private true} codepoint [c]
+(defmacro ^:private codepoint [c]
   (int c))
 
 (declare read-json-reader)
+
+(defn- codepoint-clause [[test result]]
+  (cond (list? test)
+          [(map int test) result]
+        (= test :whitespace)
+          ['(9 10 13 32) result]
+        (= test :simple-ascii)
+          [(remove #{(codepoint \") (codepoint \\) (codepoint \/)}
+                   (range 32 127))
+           result]
+        :else
+          [(int test) result]))
+
+(defmacro ^:private codepoint-case [e & clauses]
+   `(case ~e
+      ~@(mapcat codepoint-clause (partition 2 clauses))
+      ~@(when (odd? (count clauses))
+          [(last clauses)])))
 
 (defn- read-json-array [^PushbackTextReader stream keywordize?]                       ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening bracket.
   (loop [c (.Read stream), result (transient [])]                                             ;DM: .read
     (when (neg? c) (throw (EndOfStreamException. "JSON error (end-of-file inside array)")))   ;DM: EOFException.
-    (cond
-     (Char/IsWhiteSpace c) (recur (.Read stream) result)                              ;DM: Character/isWhitespace .read   
-     (= c (codepoint \,)) (recur (.Read stream) result)                               ;DM: .read
-     (= c (codepoint \])) (persistent! result)
-     :else (do (.Unread stream c)                                                     ;DM: .unread
-               (let [element (read-json-reader stream keywordize? true nil)]
-                 (recur (.Read stream) (conj! result element)))))))                   ;DM: .read
-
+    (codepoint-case c
+      :whitespace (recur (.Read stream) result)                                               ;DM: .read 
+      \, (recur (.Read stream) result)                                                        ;DM: .read 
+      \] (persistent! result)                                                                 ;DM: .unread 
+      (do (.Unread stream c)
+          (let [element (read-json-reader stream keywordize? true nil)]
+            (recur (.Read stream) (conj! result element)))))))	                              ;DM: .read 
+	
 (defn- read-json-object [^PushbackTextReader stream keywordize?]                      ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening bracket.
   (loop [c (.Read stream), key nil, result (transient {})]                                    ;DM: .read 
     (when (neg? c) (throw (EndOfStreamException. "JSON error (end-of-file inside array)")))   ;DM: EOFException.
-    (cond
-     (Char/IsWhiteSpace c) (recur (.Read stream) key result)                          ;DM: Character/isWhitespace .read
+    (codepoint-case c
+     :whitespace (recur (.Read stream) key result)                                            ;DM: .read 
 
-     (= c (codepoint \,)) (recur (.Read stream) nil result)                           ;DM: .read
+     \, (recur (.Read stream) nil result)                                                     ;DM: .read 
 
-     (= c (codepoint \:)) (recur (.Read stream) key result)                           ;DM: .read
+     \: (recur (.Read stream) key result)                                                     ;DM: .read 
 
-     (= c (codepoint \})) (if (nil? key)
-                            (persistent! result)
-                            (throw (Exception. "JSON error (key missing value in object)")))
+     \} (if (nil? key)
+           (persistent! result)
+           (throw (Exception. "JSON error (key missing value in object)")))
 
-     :else (do (.Unread stream c)                                                     ;DM: .unread
-               (let [element (read-json-reader stream keywordize? true nil)]
-                 (if (nil? key)
-                   (if (string? element)
-                     (recur (.Read stream) element result)                           ;DM: .read
-                     (throw (Exception. "JSON error (non-string key in object)")))
-                   (recur (.Read stream) nil                                         ;DM: .read
-                          (assoc! result (if keywordize? (keyword key) key)
-                                  element))))))))
-
+     (do (.Unread stream c)                                                                   ;DM: .unread 
+         (let [element (read-json-reader stream keywordize? true nil)]
+           (if (nil? key)
+             (if (string? element)
+               (recur (.Read stream) element result)                                          ;DM: .read 
+               (throw (Exception. "JSON error (non-string key in object)")))
+             (recur (.Read stream) nil                                                        ;DM: .read 
+                    (assoc! result (if keywordize? (keyword key) key)
+                            element))))))))
+							
 (defn- read-json-hex-character [^PushbackTextReader stream]                          ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
   ;; initial "\u".  Reads the next four characters from the stream.
@@ -110,14 +128,14 @@
   ;; Expects to be called with the head of the stream AFTER the
   ;; initial backslash.
   (let [c (.Read stream)]                                                            ;DM: .read
-    (cond
-     (#{(codepoint \") (codepoint \\) (codepoint \/)} c) (char c)
-     (= c (codepoint \b)) \backspace
-     (= c (codepoint \f)) \formfeed
-     (= c (codepoint \n)) \newline
-     (= c (codepoint \r)) \return
-     (= c (codepoint \t)) \tab
-     (= c (codepoint \u)) (read-json-hex-character stream))))
+    (codepoint-case c
+      (\" \\ \/) (char c)
+      \b \backspace
+      \f \formfeed
+      \n \newline
+      \r \return
+      \t \tab
+      \u (read-json-hex-character stream))))  
 
 (defn- read-json-quoted-string [^PushbackTextReader stream]                          ;DM: ^PushbackReader
   ;; Expects to be called with the head of the stream AFTER the
@@ -125,12 +143,12 @@
   (let [buffer (StringBuilder.)]
     (loop [c (.Read stream)]                                                                     ;DM: .read
       (when (neg? c) (throw (EndOfStreamException. "JSON error (end-of-file inside array)")))    ;DM: EOFException.
-      (cond
-       (= c (codepoint \")) (str buffer)
-       (= c (codepoint \\)) (do (.Append buffer (read-json-escaped-character stream))            ;DM: .append
-                                (recur (.Read stream)))                                          ;DM: .read
-       :else (do (.Append buffer (char c))                                                       ;DM: .append
-                 (recur (.Read stream)))))))                                                     ;DM: .read
+      (codepoint-case c
+          \" (str buffer)
+          \\ (do (.Append buffer (read-json-escaped-character stream))                           ;DM: .append
+                 (recur (.Read stream)))                                                         ;DM: .read
+          (do (.Append buffer (char c))                                                          ;DM: .append
+              (recur (.Read stream)))))))	                                                     ;DM: .read
 
 (defn- read-json-reader
   ([^PushbackTextReader stream keywordize? eof-error? eof-value]                     ;DM: ^PushbackReader
@@ -139,51 +157,50 @@
 	 (if eof-error?
 	   (throw (EndOfStreamException. "JSON error (end-of-file)"))                    ;DM: EOFException.
 	   eof-value)
-	 (cond
-          ;; Ignore whitespace
-          (Char/IsWhiteSpace c) (recur (.Read stream))                               ;DM: Character/isWhitespace .read
+	 (codepoint-case c
+           :whitespace (recur (.Read stream))                                        ;DM: .read
 
-          ;; Read numbers, true, and false with Clojure reader
-          (#{(codepoint \-) (codepoint \0) (codepoint \1) (codepoint \2) (codepoint \3) (codepoint \4) (codepoint \5) (codepoint \6) (codepoint \7) (codepoint \8) (codepoint \9)} c)
-          (do (.Unread stream c)                                                     ;DM: .unread
-              (read stream true nil))
+           ;; Read numbers with Clojure reader
+           (\- \0 \1 \2 \3 \4 \5 \6 \7 \8 \9)
+           (do (.Unread stream c)                                                    ;DM: .unread
+               (read stream true nil))
 
-          ;; Read strings
-          (= c (codepoint \")) (read-json-quoted-string stream)
+           ;; Read strings
+           \" (read-json-quoted-string stream)
 
-          ;; Read null as nil
-          (= c (codepoint \n)) (let [ull [(char (.Read stream))                      ;DM: .read
-                                          (char (.Read stream))                      ;DM: .read
-                                          (char (.Read stream))]]                    ;DM: .read
-                                 (if (= ull [\u \l \l])
-                                   nil
-                                   (throw (Exception. (str "JSON error (expected null): " c ull)))))
+           ;; Read null as nil
+           \n (let [ull [(.Read stream)                                             ;DM: .read
+                         (.Read stream)                                             ;DM: .read
+                         (.Read stream)]]                                           ;DM: .read
+                (if (= ull [(codepoint \u) (codepoint \l) (codepoint \l)])
+                  nil
+                  (throw (Exception. (str "JSON error (expected null): " c ull)))))
 
-          ;; Read true
-          (= c (codepoint \t)) (let [rue [(.Read stream)                             ;DM: .read
-                                          (.Read stream)                             ;DM: .read
-                                          (.Read stream)]]                           ;DM: .read
-                                 (if (= rue [(codepoint \r) (codepoint \u) (codepoint \e)])
-                                   true
-                                   (throw (Exception. (str "JSON error (expected true): " c rue)))))
+           ;; Read true
+           \t (let [rue [(.Read stream)                                            ;DM: .read
+                         (.Read stream)                                            ;DM: .read
+                         (.Read stream)]]                                          ;DM: .read
+                (if (= rue [(codepoint \r) (codepoint \u) (codepoint \e)])
+                  true
+                  (throw (Exception. (str "JSON error (expected true): " c rue)))))
 
-          ;; Read false
-          (= c (codepoint \f)) (let [alse [(.Read stream)                            ;DM: .read
-                                           (.Read stream)                            ;DM: .read
-                                           (.Read stream)                            ;DM: .read
-                                           (.Read stream)]]                          ;DM: .read
-                                 (if (= alse [(codepoint \a) (codepoint \l) (codepoint \s) (codepoint \e)])
-                                   false
-                                   (throw (Exception. (str "JSON error (expected false): " c alse)))))
+           ;; Read false
+           \f (let [alse [(.Read stream)                                          ;DM: .read
+                          (.Read stream)                                          ;DM: .read
+                          (.Read stream)                                          ;DM: .read
+                          (.Read stream)]]                                        ;DM: .read
+                (if (= alse [(codepoint \a) (codepoint \l) (codepoint \s) (codepoint \e)])
+                  false
+                  (throw (Exception. (str "JSON error (expected false): " c alse)))))
 
-          ;; Read JSON objects
-          (= c (codepoint \{)) (read-json-object stream keywordize?)
+           ;; Read JSON objects
+           \{ (read-json-object stream keywordize?)
 
-          ;; Read JSON arrays
-          (= c (codepoint \[)) (read-json-array stream keywordize?)
+           ;; Read JSON arrays
+           \[ (read-json-array stream keywordize?)
 
-          :else (throw (Exception. (str "JSON error (unexpected character): " (char c)))))))))
-
+           (throw (Exception. (str "JSON error (unexpected character): " (char c)))))))))
+	   
 (defprotocol Read-JSON-From
   (read-json-from [input keywordize? eof-error? eof-value]
                   "Reads one JSON value from input String or Reader.
@@ -230,24 +247,24 @@
     (.Append sb \")                                                                    ;DM: .append
     (dotimes [i (count s)]
       (let [cp (int (.get_Chars s i))]                                                 ;DM: (Character/codePointAt s i)
-        (cond
-         ;; Handle printable JSON escapes before ASCII
-         (= cp 34) (.Append sb "\\\"")                                                 ;DM: .append
-         (= cp 92) (.Append sb "\\\\")                                                 ;DM: .append
-         (= cp 47) (.Append sb "\\/")                                                  ;DM: .append
-         ;; Print simple ASCII characters
-         (< 31 cp 127) (.Append sb (.get_Chars s i))                                   ;DM: .append  .charAt
-         ;; Handle non-printable JSON escapes
-         (= cp 8) (.Append sb "\\b")                                                   ;DM: .append
-         (= cp 12) (.Append sb "\\f")                                                  ;DM: .append
-         (= cp 10) (.Append sb "\\n")                                                  ;DM: .append
-         (= cp 13) (.Append sb "\\r")                                                  ;DM: .append
-         (= cp 9) (.Append sb "\\t")                                                   ;DM: .append
-	 ;; Any other character is Unicode
-         :else (if escape-unicode?
-		 ;; Hexadecimal-escaped
-		 (.Append sb (format "\\u%04x" cp))                                            ;DM: .append
-		 (.Append sb (.get_Chars s i))))))                                             ;DM: (.appendCodePoint sb cp)
+        (codepoint-case cp
+          ;; Handle printable JSON escapes before ASCII
+          \" (.Append sb "\\\"")                                                       ;DM: .append
+          \\ (.Append sb "\\\\")                                                       ;DM: .append
+          \/ (.Append sb "\\/")                                                        ;DM: .append
+          ;; Print simple ASCII characters
+          :simple-ascii (.Append sb (.get_Chars s i))                                  ;DM: .append  .charAt
+          ;; Handle JSON escapes
+          \backspace (.Append sb "\\b")                                                ;DM: .append
+          \formfeed  (.Append sb "\\f")                                                ;DM: .append
+          \newline   (.Append sb "\\n")                                                ;DM: .append
+          \return    (.Append sb "\\r")                                                ;DM: .append
+          \tab       (.Append sb "\\t")                                                ;DM: .append
+          ;; Any other character is Unicode
+          (if escape-unicode?
+            ;; Hexadecimal-escaped
+            (.Append sb (format "\\u%04x" cp))                                         ;DM: .append
+            (.Append sb (.get_Chars s i))))))                                          ;DM: (.appendCodePoint sb cp)
     (.Append sb \")                                                                    ;DM: .append
     (.Write out (str sb))))                                                            ;DM: .print
 
