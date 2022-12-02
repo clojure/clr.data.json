@@ -1,6 +1,6 @@
-(defproject org.clojure.clr/data.json "0.2.1"
+(defproject org.clojure.clr/data.json "2.4.0"
   :description "Port of clojure.org/data.json to ClojureCLR"
-  :url "https://github.com/clojure/clr.data.jason"
+  :url "https://github.com/clojure/clr.data.json"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies []

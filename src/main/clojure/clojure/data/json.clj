@@ -12,9 +12,9 @@
   clojure.data.json
   (:refer-clojure :exclude (read))
   (:require [clojure.pprint :as pprint] [clojure.data.json.impl.appendable :as a])
-  (:import (System.IO EndOfStreamException TextWriter StringWriter StringReader)      ;;; (java.io PrintWriter PushbackReader StringWriter
-           (clojure.data.json.impl.appendable Appendable)                            ;;;          Writer StringReader EOFException)
-           (clojure.lang PushbackTextReader) (clojure.lang PushbackTextReader)))     ;;; DM: Added
+  (:import (System.IO EndOfStreamException TextWriter StreamWriter StringWriter StringReader)      ;;; (java.io PrintWriter PushbackReader StringWriter
+           (clojure.data.json.impl.appendable Appendable)                                          ;;;          Writer StringReader EOFException)
+           (clojure.lang PushbackTextReader) (clojure.lang PushbackTextReader)))                   ;;; DM: Added
  ;;; JSON READER
 
 (set! *warn-on-reflection* true)
