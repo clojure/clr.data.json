@@ -3,18 +3,21 @@
 JSON parser/generator to/from Clojure data structures.
 
 
-A port of [clojure/data.generators](https://github.com/clojure/data.generators) library to ClojureCLR.
+A port of [clojure/data.json](https://github.com/clojure/data.json) library to ClojureCLR.
 
 # Releases
 
 Nuget reference:
 
+```
     PM> Install-Package clojure.data.json
+```
 
 Leiningen/Clojars reference:
 
+```
    [org.clojure.clr/data.json "0.2.1"]
-   
+```   
 
 # Usage / API #
 
@@ -22,7 +25,7 @@ See the [README on the parent project](https://github.com/clojure/data.json/blob
 
 See the [API documentation for the parent project](http://clojure.github.com/data.json/).
 
-All has been implemented except (1) the compatibility interface to the 0.1 API and (2) support for older releases of Clojure.  You will need to be on ClojureCLR 1.5 or later for this code.
+All has been implemented except (1) the compatibility interface to the 0.1 API and (2) support for older releases of Clojure.
    
    
 # Copyright and License #

@@ -4,6 +4,8 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies []
+  :source-paths ["src/main/clojure"]
+  :test-paths ["src/test/clojure" "src/test/clojure-perf"]  
   :min-lein-version "2.0.0"
   :plugins [[lein-clr "0.2.0"]]
   :deploy-repositories [["clojars" {:url "https://clojars.org/repo/"
