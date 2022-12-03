@@ -553,7 +553,7 @@
         (Single/IsNaN (float x))                                                         ;;; (.isNaN x)
         (throw (Exception. "JSON error: cannot write Float NaN"))
         :else
-        (a/append-str out (pr-str x))))                                                  ;;; .append   str -> pr-str because ToString omits ".0" on integer-valued floats
+        (a/append-str out (fp-str x))))                                                  ;;; .append   str -> fp-str because ToString omits ".0" on integer-valued floats
 
 (defn- write-double [^Double x ^Appendable out options]
   (cond (Double/IsInfinity (double x))                                                   ;;; (.isInfinite x)
@@ -561,7 +561,7 @@
         (Double/IsNaN (double x))                                                        ;;; (.isNaN x)
         (throw (Exception. "JSON error: cannot write Double NaN"))
         :else
-        (a/append-str out (pr-str x))))                                                  ;;; .append   str -> pr-str because ToString omits ".0" on integer-valued floats
+        (a/append-str out (fp-str x))))                                                  ;;; .append   str -> fp-str because ToString omits ".0" on integer-valued floats
 
 (defn- write-plain [x ^Appendable out options]
   (a/append-str out (str x)))
