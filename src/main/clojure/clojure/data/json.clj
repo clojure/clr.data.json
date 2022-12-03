@@ -247,7 +247,7 @@
                              true)
                          (throw (Exception. "JSON error (invalid number literal)"))))))]
     (if decimal?
-      (read-decimal (str buffer))
+      (read-decimal (str buffer) bigdec?)
       (read-integer (str buffer)))))  
 
 (defn- next-token [^PushbackTextReader stream]                                 ;;; ^PushbackReader
@@ -435,7 +435,7 @@
                                                                                        ;;;   (.append out "00")
                                                                                        ;;;   (< cpl 4096)
                                                                                        ;;;   (.append out "0"))
-    (a/append-str out (.ToString cpl "X4"))))                                          ;;; .append Integer/toHexString cp)
+    (a/append-str out (.ToString cpl "x4"))))                                          ;;; .append Integer/toHexString cp)
 
 (def ^{:tag |System.Int16[]|} codepoint-decoder                                        ;;; "[S"
   (let [shorts (short-array 128)]
@@ -553,7 +553,7 @@
         (Single/IsNaN (float x))                                                         ;;; (.isNaN x)
         (throw (Exception. "JSON error: cannot write Float NaN"))
         :else
-        (a/append-str out (str x))))                                                     ;;; .append
+        (a/append-str out (pr-str x))))                                                  ;;; .append   str -> pr-str because ToString omits ".0" on integer-valued floats
 
 (defn- write-double [^Double x ^Appendable out options]
   (cond (Double/IsInfinity (double x))                                                   ;;; (.isInfinite x)
@@ -561,7 +561,7 @@
         (Double/IsNaN (double x))                                                        ;;; (.isNaN x)
         (throw (Exception. "JSON error: cannot write Double NaN"))
         :else
-        (a/append-str out (str x))))                                                     ;;; .append
+        (a/append-str out (pr-str x))))                                                  ;;; .append   str -> pr-str because ToString omits ".0" on integer-valued floats
 
 (defn- write-plain [x ^Appendable out options]
   (a/append-str out (str x)))
@@ -736,14 +736,14 @@
     ;; pprint proxies Writer, so we can't just wrap it
     (print (with-out-str (-write x (if (instance? TextWriter *out*) *out* (StreamWriter. ^System.IO.Stream *out*)) options)))))     ;;; (PrintWriter. *out*)
 
-(defn- pprint-dispatch [x]
+(defn- pprint-dispatch [x options]
   (cond (nil? x) (print "null")
         (true? x) (print "true")                                                ;;; Added
 		(false? x) (print "false")                                              ;;; Added
-        (instance? System.Collections.IDictionary x) (pprint-object x)          ;;; java.util.Map
+        (instance? System.Collections.IDictionary x) (pprint-object x options)          ;;; java.util.Map
         (instance? System.Collections.ICollection x) (pprint-array x)           ;;; java.util.Collection
         (instance? clojure.lang.ISeq x) (pprint-array x)
-        :else (pprint-generic x)))
+        :else (pprint-generic x options)))
 
 (defn pprint
   "Pretty-prints JSON representation of x to *out*. Options are the

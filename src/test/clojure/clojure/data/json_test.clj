@@ -299,8 +299,8 @@
 	
 (defn- double-value [_ v]
   (if (and (instance? Double v)
-           (or (Double/IsNan ^Double v)                                           ;;; .isNaN
-               (Double/IsInfinite ^Double v)))                                          ;;; .isInfinite
+           (or (Double/IsNaN ^Double v)                                           ;;; .isNaN
+               (Double/IsInfinity ^Double v)))                                          ;;; .isInfinite
     (str v)
     v))
 
@@ -413,7 +413,7 @@
     (is (= x (json/read-str (with-out-str (json/pprint x)))))))
 
 (deftest pretty-print-nonescaped-unicode
-  (is (= "\"\u1234\u4567\"\n"
+  (is (= "\"\u1234\u4567\"\r\n"                                          ;;; added \r
          (with-out-str
            (json/pprint "\u1234\u4567" :escape-unicode false)))))
 
