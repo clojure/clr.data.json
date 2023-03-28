@@ -10,13 +10,13 @@ A port of [clojure/data.json](https://github.com/clojure/data.json) library to C
 Nuget reference:
 
 ```
-    PM> Install-Package clojure.data.json -Version=2.4.0
+    PM> Install-Package clojure.data.json -Version=2.4.1
 ```
 
 Leiningen/Clojars reference:
 
 ```
-   [org.clojure.clr/data.json "2.4.0"]
+   [org.clojure.clr/data.json "2.4.1"]
 ```   
 
 # Usage / API #
