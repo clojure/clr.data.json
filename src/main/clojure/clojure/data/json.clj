@@ -566,6 +566,9 @@
 (defn- write-plain [x ^Appendable out options]
   (a/append-str out (str x)))
 
+(defn- write-boolean [x ^Appendable out options]                                         ;;; ADDED
+  (a/append-str out (if x "true" "false")))                                              ;;; ADDED              
+
 (defn- write-uuid [^System.Guid x ^Appendable out options]                               ;;; ^java.util.UUID
   (a/append-char out \")                                                                 ;;; .append
   (a/append-str out (.ToString x))                                                       ;;; .append .toString
@@ -603,7 +606,7 @@
      
 ;; nil, true, false
 (extend nil                    JSONWriter {:-write write-null})
-(extend System.Boolean         JSONWriter {:-write write-plain})                     ;;; java.lang.Boolean 
+(extend System.Boolean         JSONWriter {:-write write-boolean})                     ;;; java.lang.Boolean write-plain
 
 ;; Numbers
 (extend System.Byte            JSONWriter {:-write write-plain})                     ;;; java.lang.Byte
