@@ -653,7 +653,8 @@
                             :key-fn default-write-key-fn 
                             :value-fn default-value-fn
                             :indent false
-                            :indent-depth 0})
+                            :indent-depth 0  ;; internal, to track nesting depth
+							})
 							
 
 (defn write
@@ -709,7 +710,11 @@
         the return value is a map, it will be processed recursively,
         calling value-fn again on its key-value pairs. If value-fn
         returns itself, the key-value pair will be omitted from the
-        output. This option does not apply to non-map collections."
+        output. This option does not apply to non-map collections.
+
+    :indent boolean
+
+        If true, indent json while writing (default = false)."
   [x writer & {:as options}]                                        ;;; ^Writer  -- can't do. we might get a TextWriter or a Stream
   (-write x writer (merge default-write-options options)))
   
