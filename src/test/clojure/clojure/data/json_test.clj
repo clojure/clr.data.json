@@ -423,3 +423,13 @@
      (dotimes [_ 100]
        (assert (= (json/read-str pass1-string false)
                   (json/read-str (json/write-str (json/read-str pass1-string false)) false)))))))
+				  
+(defn djson-54-default-write-fn [x out options]
+  (#'json/write-string (str x) out options))
+
+(deftest DJSON-54-test
+  (is (thrown? Exception (json/write-str {:foo (System.Uri. "http://clojure.org")})))                                                                             ;;; java.net.URI
+  (try (json/write-str {:foo (System.Uri. "http://clojure.org")})                                                                                                 ;;; java.net.URI
+       (catch Exception e
+         (is (= "Don't know how to write JSON of System.Uri" (.Message e)))))                                                                                     ;;;  java.net.URI  .getMessage
+  (is (= "{\"foo\":\"http:\\/\\/clojure.org\\/\"}" (json/write-str {:foo (System.Uri. "http://clojure.org")} :default-write-fn djson-54-default-write-fn))))	  ;;;  java.net.URI   added \\/ at end of .org  
