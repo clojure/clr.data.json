@@ -454,16 +454,15 @@
           (aset shorts i (short 0)))))
     shorts))
 	
-(defn- write-string [^String s ^Appendable out options]                                  ;;; ^CharSequence
+(defn- slow-write-string [^String s ^Appendable out options]                                  ;;; ^CharSequence
   (let [decoder codepoint-decoder]
-    (a/append-char out \")                                                               ;;; .append
     (dotimes [i (.Length s)]                                                             ;;; .length
       (let [cp (int (.get_Chars s i))]                                                   ;;; .charAt
         (if (< cp 128)
           (case (aget decoder cp)
             0 (a/append-char out (char cp))                                                  ;;; .append
-            1 (do (a/append-char out (char (codepoint \\))) (a/append-char out (char cp)))   ;;; .append                                              ;;; .append
-            2 (a/append-str out (if (get options :escape-slash) "\\/" "/"))                                                   ;;; .append
+            1 (do (a/append-char out (char (codepoint \\))) (a/append-char out (char cp)))   ;;; .append  .append
+            2 (a/append-str out (if (get options :escape-slash) "\\/" "/"))                  ;;; .append
             3 (a/append-str out "\\b")                                                   ;;; .append
             4 (a/append-str out "\\f")                                                   ;;; .append
             5 (a/append-str out "\\n")                                                   ;;; .append
@@ -476,8 +475,24 @@
                              (a/append-char out (char cp)))
             (if (get options :escape-unicode)
               (->hex-string out cp) ; Hexadecimal-escaped
-              (a/append-char out (char cp)))))))                                         ;;; .append
-    (a/append-char out \")))	                                                         ;;; .append
+              (a/append-char out (char cp)))))))))	                                     ;;; .append
+	
+
+(defn- write-string [^String s ^Appendable out options]                                  ;;; ^CharSequence
+  (let [decoder codepoint-decoder
+        l (.Length s)]                                                                   ;;; .length
+    (a/append-char out \")                                                               ;;; .append
+    (loop [i 0]
+	  (if (= i l)
+	    (a/append-str out s)                                                             ;;; .append
+        (let [cp (int (.get_Chars s i))]                                                 ;;; .charAt
+          (if (and (< cp 128)
+		           (zero? (aget decoder cp)))
+		    (recur (unchecked-inc i))
+			(do 
+			   (a/append-str out s 0 (dec i))                                            ;;; .append  i (instead of (dec i))
+			   (slow-write-string (.Substring s i) out options))))))                     ;;; (.subSequence s i l)
+    (a/append-char out \")))	
 	
 (defn- write-indent [^Appendable out options]
   (let [indent-depth (:indent-depth options)]
