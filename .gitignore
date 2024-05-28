@@ -14,6 +14,8 @@ pom.xml
 .lein-failures
 .lein-plugins
 
+.cpcache
+
 #Visual Studio artifacts
 bin/
 obj/
