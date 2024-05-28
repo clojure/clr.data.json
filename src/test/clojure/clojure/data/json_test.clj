@@ -6,6 +6,20 @@
 (deftest read-from-pushback-reader
   (let [s (clojure.lang.PushbackTextReader. (System.IO.StringReader. "42"))]    ;;; java.io.PushbackReader. java.io.StringReader.
     (is (= 42 (json/read s)))))
+	
+;; DJSON-50 - pass PBR to safely do reapeated read
+(deftest read-multiple
+  (let [st "{\"foo\":\"some string\"}{\"foo\":\"another string\"}"
+        srdr (System.IO.StringReader. st)                                                 ;;; java.io.StringReader.
+        pbr (clojure.lang.PushbackTextReader. srdr)]                                      ;;;  (java.io.PushbackReader. srdr 64)
+    (is (= {"foo" "some string"} (json/read pbr)))
+    (is (= {"foo" "another string"} (json/read pbr))))
+
+  (let [st "{\"foo\":\"some string\"}{\"foo\":\"another long ......................................................... string\"}"
+        srdr (System.IO.StringReader. st)                                                 ;;; java.io.StringReader.
+        pbr (clojure.lang.PushbackTextReader. srdr)]                                      ;;; (java.io.PushbackReader. srdr 64)
+    (is (= {"foo" "some string"} (json/read pbr)))
+    (is (= {"foo" "another long ......................................................... string"} (json/read pbr)))))	
 
 (deftest read-from-reader
   (let [s (System.IO.StringReader. "42")]                                       ;;; java.io.StringReader.
