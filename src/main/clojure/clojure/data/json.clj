@@ -561,14 +561,17 @@
     shorts))
 	
 (defn- slow-write-string [^String s ^Appendable out options]                                  ;;; ^CharSequence
-  (let [decoder codepoint-decoder]
+  (let [decoder codepoint-decoder
+        slash (get options :escape-slash)
+        escape-js-separators (get options :escape-js-separators)
+        escape-unicode (get options :escape-unicode)]
     (dotimes [i (.Length s)]                                                             ;;; .length
       (let [cp (int (.get_Chars s i))]                                                   ;;; .charAt
         (if (< cp 128)
           (case (aget decoder cp)
             0 (a/append-char out (char cp))                                                  ;;; .append
             1 (do (a/append-char out (char (codepoint \\))) (a/append-char out (char cp)))   ;;; .append  .append
-            2 (a/append-str out (if (get options :escape-slash) "\\/" "/"))                  ;;; .append
+            2 (a/append-str out (if slash "\\/" "/"))                                    ;;; .append
             3 (a/append-str out "\\b")                                                   ;;; .append
             4 (a/append-str out "\\f")                                                   ;;; .append
             5 (a/append-str out "\\n")                                                   ;;; .append
@@ -576,10 +579,10 @@
             7 (a/append-str out "\\t")                                                   ;;; .append
             8 (->hex-string out cp))
           (codepoint-case cp
-            :js-separators (if (get options :escape-js-separators)
+            :js-separators (if escape-js-separators
                              (->hex-string out cp)
                              (a/append-char out (char cp)))
-            (if (get options :escape-unicode)
+            (if escape-unicode
               (->hex-string out cp) ; Hexadecimal-escaped
               (a/append-char out (char cp)))))))))	                                     ;;; .append
 	
