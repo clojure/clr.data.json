@@ -13,12 +13,12 @@
 		<AssemblyTitle>clojure.data.json</AssemblyTitle>
 		<Authors>ClojureCLR contributos</Authors>
 		<Description>A port of the data.json library to ClojureCLR.</Description>
-		<Copyright>Copyright © Rich Hickey, ClojureCLR contributors 2022</Copyright>
+		<Copyright>Copyright © Rich Hickey, ClojureCLR contributors 2024</Copyright>
 		<PackageLicenseExpression>EPL-1.0</PackageLicenseExpression>
 		<RepositoryUrl>https://github.com/clojure/clojure.tools.namesapce</RepositoryUrl>
 		<Company>ClojureCLR contributors</Company>
 		<PackageTags>Clojure;ClojureCLR</PackageTags>
-		<Version>2.4.1</Version> 
+		<Version>2.5.0</Version> 
 	</PropertyGroup>
 
 	<ItemGroup>
