@@ -15,6 +15,69 @@
   (:import (System.IO EndOfStreamException TextWriter StreamWriter StringWriter StringReader)      ;;; (java.io PrintWriter PushbackReader StringWriter
            (clojure.data.json.impl.appendable Appendable)                                          ;;;          Writer StringReader EOFException)
            (clojure.lang PushbackTextReader) (clojure.lang PushbackTextReader)))                   ;;; DM: Added
+;; CUSTOM PUSHBACK READER
+
+(set! *warn-on-reflection* true)
+
+(definterface InternalPBR
+  (^int readChar [])
+  ;;;(^long readChars [^chars buffer ^long start ^long bufflen])                                   ;;; the only use of it was had avoided
+  (^void unreadChar [^int c])
+  ;;;(^void unreadChars [^chars buffer ^int off ^int bufflen])                                     ;;; ClojureCLR's PushbackTextReader does not support this -- the only use of it we had avoided
+  (^System.IO.TextReader toReader []))                                                                   ;;; java.io.Reader 
+
+(deftype ReaderPBR [^PushbackTextReader rdr]                                                             ;;; PushbackReader
+  InternalPBR
+  (readChar [_]
+    (.Read rdr))                                                                                         ;;; .read 
+  ;;;(readChars [_  buffer start bufflen]
+  ;;;  (.Read rdr ^chars buffer start bufflen))                                                             ;;; .read 
+  (unreadChar [_ c]
+    (.Unread rdr c))                                                                                     ;;; .unread 
+  ;;;(unreadChars [_ buffer start bufflen]
+  ;;;  (.unread rdr buffer start bufflen))
+  (toReader [_]
+    rdr))
+
+(comment
+  (compile 'clojure.data.json)
+  )
+
+(deftype StringPBR [^String s ^:unsynchronized-mutable ^long pos ^long len]
+  InternalPBR
+  (readChar [_]
+    (if (< pos len)
+      (let [p pos]
+        (set! pos (unchecked-inc pos))
+        (let [c (int (.get_Chars s p))]                                                                ;;; charAt
+          c))
+      (let [i (int -1)]
+        i)))
+  ;;;(readChars [_  buffer start bufflen]
+  ;;;  (let [remaining (- len pos)
+  ;;;        n (Math/Min remaining bufflen)]                                                                ;;; Math/min
+  ;;;    (when (pos? n)
+  ;;;      (let [p pos
+  ;;;            end (+ p n)]
+  ;;;        (set! pos end)
+  ;;;        (.get_Chars ^String s p end ^chars buffer start)))                                             ;;; .getChars
+  ;;;    (if (pos? n) n -1)))
+  (unreadChar [_ _c]
+    (set! pos (unchecked-dec pos))
+    nil)
+  ;;;(unreadChars [_ buffer start bufflen]
+  ;;;  (set! pos (unchecked-subtract pos bufflen))
+  ;;;  nil)
+  (toReader [_]
+    (StringReader. (.Substring s pos (- len pos)))))                                                           ;;; .subSequence
+
+(defn- pushback-pbr
+  [^PushbackTextReader r]                                                                               ;;; PushbackReader
+  (->ReaderPBR r))
+
+(defn- string-pbr
+  [^String s]
+  (->StringPBR s 0 (.Length s)))                                                                        ;;; .length
  ;;; JSON READER
 
 (set! *warn-on-reflection* true)
@@ -50,23 +113,23 @@
      ~@(when (odd? (count clauses))
          [(last clauses)])))
 
-(defn- read-hex-char [^PushbackTextReader stream]                                       ;;; ^PushbackReader
+(defn- read-hex-char [^InternalPBR stream]
   ;; Expects to be called with the head of the stream AFTER the
   ;; initial "\u".  Reads the next four characters from the stream.
-  (let [a (.Read stream)                                                                ;;; .read
-        b (.Read stream)                                                                ;;; .read
-        c (.Read stream)                                                                ;;; .read
-        d (.Read stream)]                                                               ;;; .read
+  (let [a (.readChar stream)
+        b (.readChar stream)
+        c (.readChar stream)
+        d (.readChar stream)]
     (when (or (neg? a) (neg? b) (neg? c) (neg? d))
       (throw (EndOfStreamException.                                                     ;;; EOFException.
 	          "JSON error (end-of-file inside Unicode character escape)")))
     (let [s (str (char a) (char b) (char c) (char d))]
       (char (Int32/Parse s System.Globalization.NumberStyles/HexNumber)))))             ;;; (Integer/parseInt s 16)
 
-(defn- read-escaped-char [^PushbackTextReader stream]                                   ;;; ^PushbackReader
+(defn- read-escaped-char [^InternalPBR stream]
   ;; Expects to be called with the head of the stream AFTER the
   ;; initial backslash.
-  (let [c (.Read stream)]                                                               ;;; .read
+  (let [c (.readChar stream)]
     (when (neg? c)
       (throw (EndOfStreamException. "JSON error (end-of-file inside escaped char)")))   ;;; EOFException.
     (codepoint-case c
@@ -78,10 +141,10 @@
       \t \tab
       \u (read-hex-char stream))))  
 
-(defn- slow-read-string [^PushbackTextReader stream ^String already-read]            ;;; ^PushbackReader
+(defn- slow-read-string [^InternalPBR stream ^String already-read]
   (let [buffer (StringBuilder. already-read)]
     (loop []
-      (let [c (.Read stream)]                                                        ;;; .read 
+      (let [c (.readChar stream)]
         (when (neg? c)
           (throw (EndOfStreamException. "JSON error (end-of-file inside string)")))  ;;; EOFException
         (codepoint-case c
@@ -91,11 +154,11 @@
           (do (.Append buffer (char c))                                              ;;; .append
               (recur)))))))
 			  
-(defn- read-quoted-string [^PushbackTextReader stream]                               ;;; ^PushbackReader  ;;; cannot implement with chunking as done here because we don't have multi-char unread
+(defn- read-quoted-string [^InternalPBR stream]                                      ;;; cannot implement with chunking as done here because we don't have multi-char unread
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening quotation mark.
   (slow-read-string stream ""))                                                      ;;; (let [buffer ^chars (char-array 64)
-                                                                                     ;;;         read (.read stream buffer 0 64)
+                                                                                     ;;;         read (.readChars stream buffer 0 64)
                                                                                      ;;;         end-index (unchecked-dec-int read)]
                                                                                      ;;;     (when (neg? read)
                                                                                      ;;;       (throw (EOFException. "JSON error (end-of-file inside string)")))
@@ -104,11 +167,11 @@
                                                                                      ;;;         (codepoint-case c
                                                                                      ;;;           \" (let [off (unchecked-inc-int i)
                                                                                      ;;;                    len (unchecked-subtract-int read off)]
-                                                                                     ;;;                (.unread stream buffer off len)
+                                                                                     ;;;                (.unreadChars stream buffer off len)
                                                                                      ;;;                (String. buffer 0 i))
                                                                                      ;;;           \\ (let [off i
                                                                                      ;;;                    len (unchecked-subtract-int read off)]
-                                                                                     ;;;                (.unread stream buffer off len)
+                                                                                     ;;;                (.unreadChar stream buffer off len)
                                                                                      ;;;                (slow-read-string stream (String. buffer 0 i)))
                                                                                      ;;;           (if (= i end-index)
                                                                                      ;;;             (do (.unread stream c)
@@ -127,10 +190,10 @@
     (bigdec string)
     (Double/Parse string)))                                                               ;;; Double/valueOf
 
-(defn- read-number [^PushbackTextReader stream bigdec?]                                   ;;; ^PushbackReader
+(defn- read-number [^InternalPBR stream bigdec?]
   (let [buffer (StringBuilder.)
         decimal? (loop [stage :minus]
-                   (let [c (.Read stream)]                                                ;;; .read 
+                   (let [c (.readChar stream)]
                      (case stage
                        :minus
                        (codepoint-case c
@@ -168,10 +231,10 @@
                              (recur :exp-symbol))
                          ;; early exit
                          :whitespace
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              false)
                          (\, \] \} -1)
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              false)
                          (throw (Exception. "JSON error (invalid number literal)")))
                        ;; previous character is a "0"
@@ -185,10 +248,10 @@
                              (recur :exp-symbol))
                          ;; early exit
                          :whitespace
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              false)
                          (\, \] \} -1)
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              false)
                          ;; Disallow zero-padded numbers or invalid characters
                          (throw (Exception. "JSON error (invalid number literal)")))
@@ -210,10 +273,10 @@
                              (recur :exp-symbol))
                          ;; early exit
                          :whitespace
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              true)
                          (\, \] \} -1)
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              true)
                          (throw (Exception. "JSON error (invalid number literal)")))
                        ;; previous character is a "e" or "E"
@@ -240,28 +303,28 @@
                          (do (.Append buffer (char c))                                    ;;; .append
                              (recur :exp-digit))
                          :whitespace
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              true)
                          (\, \] \} -1)
-                         (do (.Unread stream c)                                           ;;; .unread
+                         (do (.unreadChar stream c)
                              true)
                          (throw (Exception. "JSON error (invalid number literal)"))))))]
     (if decimal?
       (read-decimal (str buffer) bigdec?)
       (read-integer (str buffer)))))  
 
-(defn- next-token [^PushbackTextReader stream]                                 ;;; ^PushbackReader
-  (loop [c (.Read stream)]                                                     ;;; .read
+(defn- next-token [^InternalPBR stream]
+  (loop [c (.readChar stream)]
     (if (< 32 c)
       (int c)
       (codepoint-case (int c)
-        :whitespace (recur (.Read stream))                                     ;;; .read
+        :whitespace (recur (.readChar stream))
         -1 -1))))
 
 (defn invalid-array-exception []
   (Exception. "JSON error (invalid array)"))
   
-(defn- read-array* [^PushbackTextReader stream options]                        ;;; ^PushbackReader
+(defn- read-array* [^InternalPBR stream options]
   ;; Handles all array values after the first.
   (loop [result (transient [])]
     (let [r (conj! result (-read stream true nil options))]
@@ -270,7 +333,7 @@
         \, (recur r)
         (throw (invalid-array-exception))))))
   
- (defn- read-array [^PushbackTextReader stream options]                                               ;;; ^PushbackReader
+ (defn- read-array [^InternalPBR stream options]
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening bracket.
   ;; Only handles array value.  
@@ -278,10 +341,10 @@
     (codepoint-case c
       \] []
       \, (throw (invalid-array-exception))
-      (do (.Unread stream c)                                                                           ;;; .unread
+      (do (.unreadChar stream c)
           (read-array* stream options)))))
 
-(defn- read-key [^PushbackTextReader stream]                                                           ;;; ^PushbackReader
+(defn- read-key [^InternalPBR stream]
   (let [c (int (next-token stream))]
     (if (= c (codepoint \"))
       (let [key (read-quoted-string stream)]
@@ -292,7 +355,7 @@
         nil
         (throw (Exception. (str "JSON error (non-string key in object), found `" (char c) "`, expected `\"`"))))))) 
   
-(defn- read-object [^PushbackTextReader stream options]                                              ;;; ^PushbackReader
+(defn- read-object [^InternalPBR stream options]
   ;; Expects to be called with the head of the stream AFTER the
   ;; opening bracket.
   (let [key-fn (get options :key-fn)
@@ -317,36 +380,36 @@
             (throw (Exception. "JSON error empty entry in object is not allowed"))))))))
   
 (defn- -read
-  [^PushbackTextReader stream eof-error? eof-value options]                         ;;; ^PushbackReader
+  [^InternalPBR stream eof-error? eof-value options]
   (let [c (int (next-token stream))]
     (codepoint-case c
         ;; Read numbers
         (\- \0 \1 \2 \3 \4 \5 \6 \7 \8 \9)
-        (do (.Unread stream c)                                                      ;;; .unread
+        (do (.unreadChar stream c)
             (read-number stream (:bigdec options)))
 
         ;; Read strings
         \" (read-quoted-string stream)
 
         ;; Read null as nil
-        \n (if (and (= (codepoint \u) (.Read stream))                               ;;; .read
-                    (= (codepoint \l) (.Read stream))                               ;;; .read
-                    (= (codepoint \l) (.Read stream)))                              ;;; .read
+        \n (if (and (= (codepoint \u) (.readChar stream))
+                    (= (codepoint \l) (.readChar stream))
+                    (= (codepoint \l) (.readChar stream)))
              nil
              (throw (Exception. "JSON error (expected null)")))
 
         ;; Read true
-        \t (if (and (= (codepoint \r) (.Read stream))                               ;;; .read
-                    (= (codepoint \u) (.Read stream))                               ;;; .read
-                    (= (codepoint \e) (.Read stream)))                              ;;; .read
+        \t (if (and (= (codepoint \r) (.readChar stream))
+                    (= (codepoint \u) (.readChar stream))
+                    (= (codepoint \e) (.readChar stream)))
              true
              (throw (Exception. "JSON error (expected true)")))
 
         ;; Read false
-        \f (if (and (= (codepoint \a) (.Read stream))                               ;;; .read
-                    (= (codepoint \l) (.Read stream))                               ;;; .read
-                    (= (codepoint \s) (.Read stream))                               ;;; .read
-                    (= (codepoint \e) (.Read stream)))                              ;;; .read
+        \f (if (and (= (codepoint \a) (.readChar stream))
+                    (= (codepoint \l) (.readChar stream))
+                    (= (codepoint \s) (.readChar stream))
+                    (= (codepoint \e) (.readChar stream)))
              false
              (throw (Exception. "JSON error (expected false)")))
 
@@ -364,15 +427,15 @@
                   (str "JSON error (unexpected character): " (char c))))))))
 
 (defn- -read1
-  [^PushbackTextReader stream eof-error? eof-value options]                         ;;; PushbackReader
+  [^InternalPBR stream eof-error? eof-value options]
   (let [val (-read stream eof-error? eof-value options)]
     (if-let [extra-data-fn (:extra-data-fn options)]
       (if (or eof-error? (not (identical? eof-value val)))
-        (let [c (.Read stream)]                                                     ;;; .read
+        (let [c (.readChar stream)]
           (if (neg? c)
             val
             (do
-              (.Unread stream c)                                                    ;;; .unread 
+              (.unreadChar stream c)
               (extra-data-fn val stream))))
         val)
       val)))
@@ -386,8 +449,8 @@
 (defn on-extra-throw-remaining
   "Pass as :extra-data-fn to `read` or `read-str` to throw if data is found
   after the first object and return the remaining data in ex-data :remaining."
-  [val ^clojure.lang.PushbackTextReader rdr]                                       ;;; java.io.PushbackReader
-  (let [remaining (.ReadToEnd rdr)]                                                ;;; (slurp rdr) -- does not work on a reader
+  [val ^InternalPBR rdr]                                                                       ;;; added type hint
+  (let [remaining (.ReadToEnd ^System.IO.TextReader (.toReader rdr))]                                                ;;; (slurp rdr) -- does not work on a reader
     (throw (ex-info (str "Found extra data after json object: " remaining)
              {:val val, :remaining remaining}))))
 			 
@@ -443,9 +506,10 @@
   [reader & {:as options}]
   (let [{:keys [eof-error? eof-value]
          :or {eof-error? true}} options
-        pbr (if (instance? PushbackTextReader reader)                                     ;;; PushbackReader
-              reader
-              (PushbackTextReader. reader))]                                              ;;; PushbackReader.  --  64  (can't specify size of pushback buffer)
+        pbr (pushback-pbr
+		      (if (instance? PushbackTextReader reader)                                     ;;; PushbackReader
+                reader
+                (PushbackTextReader. reader)))]                                              ;;; PushbackReader.  --  64  (can't specify size of pushback buffer)
     (->> options
          (merge default-read-options)
          (-read1 pbr eof-error? eof-value))))
@@ -458,7 +522,7 @@
          :or {eof-error? true}} options]
     (->> options
          (merge default-read-options)
-         (-read1 (PushbackTextReader. (StringReader. string)) eof-error? eof-value))))    ;;; PushbackReader.  --  64  (can't specify size of pushback buffer)
+         (-read1 (string-pbr string) eof-error? eof-value))))
 
 ;;; JSON WRITER
 
