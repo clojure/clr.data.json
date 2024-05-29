@@ -407,6 +407,18 @@
   (is (thrown? System.IO.EndOfStreamException                                            ;;; java.io.EOFException
         (json/read-str "\"\\"))))
 		
+(deftest throws-eof-in-arrays
+  (is (thrown? System.IO.EndOfStreamException                                            ;;; java.io.EOFException
+        (json/read-str "[1,")))
+  (is (thrown? System.IO.EndOfStreamException                                            ;;; java.io.EOFException
+        (json/read-str "[1,2,"))))
+
+(deftest throws-eof-in-objects
+  (is (thrown? System.IO.EndOfStreamException                                            ;;; java.io.EOFException
+        (json/read-str "{")))
+  (is (thrown? System.IO.EndOfStreamException                                            ;;; java.io.EOFException
+        (json/read-str "{\"\":1,"))))		
+		
 (deftest accept-eof
   (is (= ::eof (json/read-str "" :eof-error? false :eof-value ::eof))))
 

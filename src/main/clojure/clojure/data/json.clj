@@ -324,6 +324,9 @@
 (defn invalid-array-exception []
   (Exception. "JSON error (invalid array)"))
   
+(defn- eof-array-exception []
+  (EndOfStreamException. "JSON error (EOF in array)"))                                 ;;; EOFException.
+  
 (defn- read-array* [^InternalPBR stream options]
   ;; Handles all array values after the first.
   (loop [result (transient [])]
@@ -331,6 +334,7 @@
       (codepoint-case (int (next-token stream))
         \] (persistent! r)
         \, (recur r)
+		-1 (throw (eof-array-exception))
         (throw (invalid-array-exception))))))
   
  (defn- read-array [^InternalPBR stream options]
@@ -341,8 +345,24 @@
     (codepoint-case c
       \] []
       \, (throw (invalid-array-exception))
+	  -1 (throw (eof-array-exception))
       (do (.unreadChar stream c)
           (read-array* stream options)))))
+
+(defn- object-colon-exception []
+  (Exception. "JSON error (missing `:` in object)"))
+
+(defn- eof-object-exception []
+  (EndOfStreamException. "JSON error (EOF in object)"))                                ;;; EOFException.
+
+(defn- invalid-key-exception [c]
+  (if (= c -1)
+    (throw (eof-object-exception))
+    (throw (Exception. (str "JSON error (non-string key in object), found `" (char c) "`, expected `\"`")))))
+
+(comment
+  (compile 'clojure.data.json)
+  )
 
 (defn- read-key [^InternalPBR stream]
   (let [c (int (next-token stream))]
@@ -350,10 +370,10 @@
       (let [key (read-quoted-string stream)]
         (if (= (codepoint \:) (int (next-token stream)))
           key
-          (throw (Exception. "JSON error (missing `:` in object)"))))
+          (throw (object-colon-exception))))
       (if (= c (codepoint \}))
         nil
-        (throw (Exception. (str "JSON error (non-string key in object), found `" (char c) "`, expected `\"`"))))))) 
+        (invalid-key-exception c)))))
   
 (defn- read-object [^InternalPBR stream options]
   ;; Expects to be called with the head of the stream AFTER the
@@ -373,6 +393,7 @@
           (codepoint-case (int (next-token stream))
             \, (recur r)
             \} (persistent! r)
+			-1 (throw (eof-object-exception))
             (throw (Exception. "JSON error (missing entry in object)"))))
         (let [r (persistent! result)]
           (if (empty? r)
