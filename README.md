@@ -7,16 +7,23 @@ A port of [clojure/data.json](https://github.com/clojure/data.json) library to C
 
 # Releases
 
+Latest stable release: 2.5.0
+
+[clj](https://clojure.org/guides/getting_started) dependency information:
+```clojure
+io.github.clojure/clr.data.json {:git/tag "v2.5.0" :git/sha "1c738a1"}
+```
+
 Nuget reference:
 
 ```
-    PM> Install-Package clojure.data.json -Version=2.4.1
+    PM> Install-Package clojure.data.json -Version=2.5.0
 ```
 
 Leiningen/Clojars reference:
 
 ```
-   [org.clojure.clr/data.json "2.4.1"]
+   [org.clojure.clr/data.json "2.5.0"]
 ```   
 
 # Usage / API #
