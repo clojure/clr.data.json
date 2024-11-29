@@ -33,6 +33,7 @@
   ;;;(readChars [_  buffer start bufflen]
   ;;;  (.Read rdr ^chars buffer start bufflen))                                                             ;;; .read 
   (unreadChar [_ c]
+    ;; ASSERT: c should never be -1 (EOF)  
     (.Unread rdr c))                                                                                     ;;; .unread 
   ;;;(unreadChars [_ buffer start bufflen]
   ;;;  (.unread rdr buffer start bufflen))
@@ -63,6 +64,7 @@
   ;;;        (.get_Chars ^String s p end ^chars buffer start)))                                             ;;; .getChars
   ;;;    (if (pos? n) n -1)))
   (unreadChar [_ _c]
+    ;; ASSERT: c should never be -1 (EOF)  
     (set! pos (unchecked-dec pos))
     nil)
   ;;;(unreadChars [_ _buffer _start bufflen]
@@ -233,9 +235,11 @@
                          :whitespace
                          (do (.unreadChar stream c)
                              false)
-                         (\, \] \} -1)
+                         (\, \] \})
                          (do (.unreadChar stream c)
                              false)
+                         -1
+                         false							 
                          (throw (Exception. "JSON error (invalid number literal)")))
                        ;; previous character is a "0"
                        :frac-point
@@ -250,9 +254,11 @@
                          :whitespace
                          (do (.unreadChar stream c)
                              false)
-                         (\, \] \} -1)
+                         (\, \] \})
                          (do (.unreadChar stream c)
                              false)
+                         -1
+                         false
                          ;; Disallow zero-padded numbers or invalid characters
                          (throw (Exception. "JSON error (invalid number literal)")))
                        ;; previous character is a "."
@@ -275,9 +281,11 @@
                          :whitespace
                          (do (.unreadChar stream c)
                              true)
-                         (\, \] \} -1)
+                         (\, \] \})
                          (do (.unreadChar stream c)
                              true)
+                         -1
+                         true
                          (throw (Exception. "JSON error (invalid number literal)")))
                        ;; previous character is a "e" or "E"
                        :exp-symbol
