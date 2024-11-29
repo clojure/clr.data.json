@@ -3,21 +3,27 @@
             [clojure.test :refer :all]
             [clojure.string :as str]))
 
+(defn pbr
+  ([s]
+   (pbr s 64))
+  ([s size]
+   (if (< size 64)
+     (throw (Exception. "Size must be >= 64"))                                  ;;; RuntimeException.
+     (clojure.lang.PushbackTextReader.(System.IO.StringReader. s) #_size ))))   ;;; java.io.PushbackReader. java.io.StringReader.  -- removed size parameter -- we don't support it
+	 
 (deftest read-from-pushback-reader
-  (let [s (clojure.lang.PushbackTextReader. (System.IO.StringReader. "42"))]    ;;; java.io.PushbackReader. java.io.StringReader.
-    (is (= 42 (json/read s)))))
+  (is (= 42 (json/read (pbr "42"))))
+  (is (= ["abc" "def"] (json/read (pbr "[\"abc\", \"def\"]")))))
 	
-;; DJSON-50 - pass PBR to safely do reapeated read
+;; DJSON-50 - pass PBR to safely do repeated read
 (deftest read-multiple
   (let [st "{\"foo\":\"some string\"}{\"foo\":\"another string\"}"
-        srdr (System.IO.StringReader. st)                                                 ;;; java.io.StringReader.
-        pbr (clojure.lang.PushbackTextReader. srdr)]                                      ;;;  (java.io.PushbackReader. srdr 64)
+        pbr (pbr st)]
     (is (= {"foo" "some string"} (json/read pbr)))
     (is (= {"foo" "another string"} (json/read pbr))))
 
   (let [st "{\"foo\":\"some string\"}{\"foo\":\"another long ......................................................... string\"}"
-        srdr (System.IO.StringReader. st)                                                 ;;; java.io.StringReader.
-        pbr (clojure.lang.PushbackTextReader. srdr)]                                      ;;; (java.io.PushbackReader. srdr 64)
+        pbr (pbr st)]
     (is (= {"foo" "some string"} (json/read pbr)))
     (is (= {"foo" "another long ......................................................... string"} (json/read pbr)))))	
 
